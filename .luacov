@@ -1,0 +1,4 @@
+modules = {
+   ["luabench"] = "src/luabench.lua",
+   ["luabench.*"] = "src",
+}
