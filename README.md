@@ -1,6 +1,7 @@
 # LuaBench
 
-CLI companion to [LuaMark](https://github.com/jeffzi/luamark) for comparing Lua library performance across git references.
+CLI companion to [LuaMark](https://github.com/jeffzi/luamark) for comparing Lua
+library performance across git references.
 
 **Status:** Under development. Not yet published to luarocks.
 

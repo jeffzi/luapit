@@ -32,7 +32,7 @@ jobs:
           luarocks install argparse --dev
           luarocks install dkjson
           luarocks install chronos
-          luarocks install terminal
+          luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
 
       - name: Run tests
         run: busted
@@ -59,7 +59,7 @@ jobs:
           luarocks install argparse
           luarocks install dkjson
           luarocks install chronos
-          luarocks install terminal
+          luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
 
       - name: Run tests with coverage
         run: busted -c

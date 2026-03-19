@@ -7,8 +7,8 @@ M._VERSION = "0.1.0-dev"
 --- Build argparse parser with all CLI flags.
 --- @return table parser Configured argparse parser.
 function M.build_parser()
-   local parser = argparse("luabench", "Compare Lua library performance across git refs.")
-      :add_help(true)
+   local parser =
+      argparse("luabench", "Compare Lua library performance across git refs."):add_help(true)
    parser:command_target("command")
    parser:require_command(true)
 
