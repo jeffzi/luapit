@@ -1,0 +1,68 @@
+name: Busted
+
+on: [push, pull_request]
+
+jobs:
+  busted:
+    strategy:
+      fail-fast: false
+      matrix:
+        luaVersion: ["5.5.0", "5.4", "5.3", "5.2", "5.1", "luajit-2.1"]
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: ${{ matrix.luaVersion }}
+
+      - name: Setup LuaRocks
+        uses: leafo/gh-actions-luarocks@v6
+        with:
+          luaRocksVersion: "3.13.0"
+
+      - name: Setup dependencies
+        run: |
+          luarocks install busted
+          luarocks install luamark
+          luarocks install argparse --dev
+          luarocks install dkjson
+          luarocks install chronos
+          luarocks install terminal
+
+      - name: Run tests
+        run: busted
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: "5.4"
+
+      - name: Setup LuaRocks
+        uses: leafo/gh-actions-luarocks@v6
+
+      - name: Setup dependencies
+        run: |
+          luarocks install busted
+          luarocks install luacov
+          luarocks install luamark
+          luarocks install argparse
+          luarocks install dkjson
+          luarocks install chronos
+          luarocks install terminal
+
+      - name: Run tests with coverage
+        run: busted -c
+
+      - name: Print coverage summary
+        run: luacov && tail -7 luacov.report.out
