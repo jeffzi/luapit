@@ -1,4 +1,6 @@
 local argparse = require("argparse")
+local discover = require("luabench.discover")
+local runner = require("luabench.runner")
 
 local M = {}
 
@@ -27,10 +29,25 @@ end
 --- Entry point for the CLI.
 function M.main()
    local parser = M.build_parser()
-   parser:parse()
+   local args = parser:parse()
 
-   io.stderr:write("luabench: not yet implemented\n")
-   os.exit(1)
+   if args.command == "ref" then
+      local bench_files = discover.discover(args.paths)
+      if #bench_files == 0 then
+         io.stderr:write("luabench: no benchmark files found\n")
+         os.exit(1)
+      end
+
+      -- Phase 2: treat -r values as local directory targets
+      -- Phase 3 will add git ref resolution
+      local targets = args.ref or {}
+      if #targets == 0 then
+         io.stderr:write("luabench: no targets specified (use -r <directory>)\n")
+         os.exit(1)
+      end
+
+      runner.run(bench_files, targets)
+   end
 end
 
 return M
