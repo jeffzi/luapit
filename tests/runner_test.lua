@@ -136,7 +136,10 @@ describe("runner", function()
    it("run calls compare_time with target specs and renders output with header", function()
       local spy_state, teardown = setup_run_stubs()
 
-      runner.run({ SORT_BENCH }, { LIBV1_DIR, LIBV2_DIR })
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
 
       teardown()
 
@@ -152,7 +155,11 @@ describe("runner", function()
    it("run skips benchmark when load_benchmark returns nil for all targets", function()
       local spy_state, teardown = setup_run_stubs()
 
-      runner.run({ FIXTURE_DIR .. "/nonexistent_bench.lua" }, { LIBV1_DIR, LIBV2_DIR })
+      local targets = {
+         { path = LIBV1_DIR, name = "libv1" },
+         { path = LIBV2_DIR, name = "libv2" },
+      }
+      runner.run({ FIXTURE_DIR .. "/nonexistent_bench.lua" }, targets)
 
       teardown()
 
@@ -162,7 +169,11 @@ describe("runner", function()
    it("run skips target when load fails and continues with remaining targets", function()
       local spy_state, teardown = setup_run_stubs()
 
-      runner.run({ SORT_BENCH }, { LIBV1_DIR, "/nonexistent/target" })
+      local targets = {
+         { path = LIBV1_DIR, name = "libv1" },
+         { path = "/nonexistent/target", name = "bad" },
+      }
+      runner.run({ SORT_BENCH }, targets)
 
       teardown()
 
@@ -174,7 +185,10 @@ describe("runner", function()
       local spy_state, teardown = setup_run_stubs()
       local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
 
-      runner.run({ multi_bench }, { LIBV1_DIR, LIBV2_DIR })
+      runner.run(
+         { multi_bench },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
 
       teardown()
 
@@ -185,7 +199,7 @@ describe("runner", function()
       local spy_state, teardown = setup_run_stubs()
       local hooks_bench = FIXTURE_DIR .. "/benchmarks/hooks_bench.lua"
 
-      runner.run({ hooks_bench }, { LIBV1_DIR })
+      runner.run({ hooks_bench }, { { path = LIBV1_DIR, name = "libv1" } })
 
       teardown()
 
@@ -211,7 +225,7 @@ describe("runner", function()
 
       runner.run(
          { SORT_BENCH, FIXTURE_DIR .. "/benchmarks/sort_bench.lua" },
-         { LIBV1_DIR, LIBV2_DIR }
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
       )
 
       local stderr_output = read_stderr()

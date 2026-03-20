@@ -84,7 +84,10 @@ describe("luabench", function()
       local bench_files = discover_mod.discover({
          FIXTURE_DIR .. "/benchmarks/sort_bench.lua",
       })
-      runner_mod.run(bench_files, { LIBV1_DIR, LIBV2_DIR })
+      runner_mod.run(
+         bench_files,
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
 
       luamark.compare_time = original_compare
       luamark.render = original_render
@@ -179,6 +182,9 @@ describe("luabench", function()
       io.write = original_write -- luacheck: ignore 122
 
       assert.are_same({ "bench1.lua" }, captured_files)
-      assert.are_same({ "/tmp/libv1", "/tmp/libv2" }, captured_targets)
+      assert.are_same({
+         { path = "/tmp/libv1", name = "libv1" },
+         { path = "/tmp/libv2", name = "libv2" },
+      }, captured_targets)
    end)
 end)

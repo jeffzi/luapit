@@ -1,5 +1,6 @@
 local argparse = require("argparse")
 local discover = require("luabench.discover")
+local path = require("pl.path")
 local runner = require("luabench.runner")
 
 local M = {}
@@ -39,12 +40,17 @@ function M.main(argv)
          os.exit(1)
       end
 
-      -- Phase 2: treat -r values as local directory targets
-      -- Phase 3 will add git ref resolution
-      local targets = args.ref or {}
-      if #targets == 0 then
+      -- Temporary bridge: wrap -r strings as {path, name} targets
+      -- Plan 02 will replace this with resolve_targets integration
+      local raw_targets = args.ref or {}
+      if #raw_targets == 0 then
          io.stderr:write("luabench: no targets specified (use -r <directory>)\n")
          os.exit(1)
+      end
+
+      local targets = {}
+      for i = 1, #raw_targets do
+         targets[i] = { path = raw_targets[i], name = path.basename(raw_targets[i]) }
       end
 
       runner.run(bench_files, targets)

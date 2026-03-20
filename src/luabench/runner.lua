@@ -62,34 +62,34 @@ local function run_single(id, funcs)
    io.write(luamark.render(results) .. "\n")
 end
 
---- Load a benchmark file from each target directory.
+--- Load a benchmark file from each target.
 --- @param bench_file string Absolute path to a benchmark file.
---- @param targets string[] Directory paths to benchmark against.
+--- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
 --- @return {name: string, result: table}[]
 local function load_targets(bench_file, targets)
    local loaded = {}
    for j = 1, #targets do
-      local target_dir = targets[j]
-      local result = M.with_target(target_dir, function()
+      local target = targets[j]
+      local result = M.with_target(target.path, function()
          return loader.load_benchmark(bench_file)
       end)
       if result ~= nil then
          loaded[#loaded + 1] = {
-            name = path.basename(target_dir),
+            name = target.name,
             result = result,
          }
       else
          io.stderr:write(
-            string.format("luabench: warning: skipping %s for target %s\n", bench_file, target_dir)
+            string.format("luabench: warning: skipping %s for target %s\n", bench_file, target.name)
          )
       end
    end
    return loaded
 end
 
---- Run benchmarks across target directories.
+--- Run benchmarks across targets.
 --- @param bench_files string[] Absolute paths to benchmark files.
---- @param targets string[] Directory paths to benchmark against.
+--- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
 function M.run(bench_files, targets)
    for i = 1, #bench_files do
       local bench_file = bench_files[i]
