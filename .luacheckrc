@@ -1,5 +1,6 @@
 std = "min"
 include_files = { "src", "tests" }
+exclude_files = { "tests/fixtures/syntax_error_bench.lua" }
 globals = {
    "_G",
    "jit", -- LuaJIT
@@ -9,4 +10,8 @@ max_comment_line_length = 200
 
 files["tests/**/*.lua"] = {
    std = "+busted",
+}
+
+files["tests/*_test.lua"] = {
+   ignore = { "122" }, -- setting read-only field (io.stderr capture in tests)
 }

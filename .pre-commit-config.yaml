@@ -27,6 +27,7 @@ repos:
     rev: v2.3.1
     hooks:
       - id: stylua-github
+        exclude: tests/fixtures/syntax_error_bench\.lua
 
   # Lua linting
   - repo: https://github.com/lunarmodules/luacheck
