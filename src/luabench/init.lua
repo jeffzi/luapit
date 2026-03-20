@@ -4,7 +4,7 @@ local runner = require("luabench.runner")
 
 local M = {}
 
-M._VERSION = "0.1.0-dev"
+M._VERSION = "0.2.0"
 
 --- Build argparse parser with all CLI flags.
 --- @return table parser Configured argparse parser.
