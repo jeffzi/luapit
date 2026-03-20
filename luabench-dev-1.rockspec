@@ -29,6 +29,7 @@ dependencies = {
    "lua >= 5.1",
    "argparse >= 0.7.1",
    "luamark >= 1.0.0",
+   "luafilesystem >= 1.8.0",
    "dkjson >= 2.5",
    "chronos >= 0.2",
    "terminal",
@@ -37,7 +38,8 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
-      luabench = "src/luabench.lua",
+      luabench = "src/luabench/init.lua",
+      ["luabench.discover"] = "src/luabench/discover.lua",
    },
    install = {
       bin = {
