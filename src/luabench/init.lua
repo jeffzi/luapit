@@ -1,6 +1,6 @@
 local argparse = require("argparse")
 local discover = require("luabench.discover")
-local path = require("pl.path")
+local resolve = require("luabench.resolve")
 local runner = require("luabench.runner")
 
 local M = {}
@@ -16,8 +16,8 @@ function M.build_parser()
    parser:require_command(true)
 
    local ref = parser:command("ref", "Compare a library across git references.")
-   ref:argument("paths", "Benchmark files or directories."):args("+")
-   ref:option("-r --ref", "Git reference ([alias=]repo#ref)."):count("*")
+   ref:argument("targets", "Target specifiers ([alias=]repo#ref or local dir)."):args("+")
+   ref:option("-b --bench", "Benchmark files or directories."):count("*")
    ref:option("-p --param", "Parameter in format NAME:VALUE."):count("*")
    ref:option("-R --runtime", "Lua runtime [default: luajit].")
    ref:option("-o --output", "Output file path.")
@@ -34,26 +34,32 @@ function M.main(argv)
    local args = parser:parse(argv)
 
    if args.command == "ref" then
-      local bench_files = discover.discover(args.paths)
+      -- Resolve targets (fail fast per D-11)
+      local targets, err = resolve.resolve_targets(args.targets)
+      if not targets then
+         io.stderr:write("luabench: " .. err .. "\n")
+         os.exit(1)
+      end
+
+      -- Discover benchmarks (default to cwd per D-02)
+      local bench_paths = args.bench
+      if #bench_paths == 0 then
+         bench_paths = { "." }
+      end
+      local bench_files = discover.discover(bench_paths)
       if #bench_files == 0 then
+         resolve.cleanup(targets)
          io.stderr:write("luabench: no benchmark files found\n")
          os.exit(1)
       end
 
-      -- Temporary bridge: wrap -r strings as {path, name} targets
-      -- Plan 02 will replace this with resolve_targets integration
-      local raw_targets = args.ref or {}
-      if #raw_targets == 0 then
-         io.stderr:write("luabench: no targets specified (use -r <directory>)\n")
+      -- Run benchmarks then cleanup (cleanup always runs per D-14)
+      local run_ok, run_err = pcall(runner.run, bench_files, targets)
+      resolve.cleanup(targets)
+      if not run_ok then
+         io.stderr:write("luabench: benchmark error: " .. tostring(run_err) .. "\n")
          os.exit(1)
       end
-
-      local targets = {}
-      for i = 1, #raw_targets do
-         targets[i] = { path = raw_targets[i], name = path.basename(raw_targets[i]) }
-      end
-
-      runner.run(bench_files, targets)
    end
 end
 
