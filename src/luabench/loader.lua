@@ -7,7 +7,7 @@ function M.load_benchmark(filepath)
    local ok, result = pcall(dofile, filepath)
    if not ok then
       io.stderr:write(
-         "luabench: warning: failed to load " .. filepath .. ": " .. tostring(result) .. "\n"
+         string.format("luabench: warning: failed to load %s: %s\n", filepath, tostring(result))
       )
       return nil
    end

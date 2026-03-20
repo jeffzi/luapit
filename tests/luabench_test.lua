@@ -13,13 +13,9 @@ describe("luabench", function()
       luabench = require("luabench")
    end)
 
-   it("exports main function and _VERSION string", function()
+   it("exports main function and _VERSION in semver format", function()
       assert.is_table(luabench)
       assert.is_function(luabench.main)
-      assert.is_string(luabench._VERSION)
-   end)
-
-   it("_VERSION matches semver pattern", function()
       assert.matches("%d+%.%d+%.%d+", luabench._VERSION)
    end)
 
@@ -105,11 +101,90 @@ describe("luabench", function()
       assert.is_not_nil(compare_args["libv2"])
    end)
 
-   it("main() does not contain not-yet-implemented stub", function()
-      local source = io.open("src/luabench/init.lua", "r")
-      local content = source:read("*a")
-      source:close()
+   -- main() integration tests
 
-      assert.is_nil(content:find("not yet implemented"))
+   it("main exits with error when no benchmark files found", function()
+      local discover_mod = require("luabench.discover")
+      local original_discover = discover_mod.discover
+      local original_exit = os.exit
+      local original_stderr = io.stderr
+
+      discover_mod.discover = function()
+         return {}
+      end
+      local exit_code
+      os.exit = function(code) -- luacheck: ignore 122
+         exit_code = code
+         error("EXIT")
+      end
+      io.stderr = io.tmpfile()
+
+      pcall(luabench.main, { "ref", "nonexistent/", "-r", "somedir" })
+
+      io.stderr:seek("set")
+      local stderr_output = io.stderr:read("*a")
+      io.stderr:close()
+      discover_mod.discover = original_discover
+      os.exit = original_exit -- luacheck: ignore 122
+      io.stderr = original_stderr
+
+      assert.are_equal(1, exit_code)
+      assert.matches("no benchmark files found", stderr_output)
+   end)
+
+   it("main exits with error when no targets specified", function()
+      local discover_mod = require("luabench.discover")
+      local original_discover = discover_mod.discover
+      local original_exit = os.exit
+      local original_stderr = io.stderr
+
+      discover_mod.discover = function()
+         return { "fake_bench.lua" }
+      end
+      local exit_code
+      os.exit = function(code) -- luacheck: ignore 122
+         exit_code = code
+         error("EXIT")
+      end
+      io.stderr = io.tmpfile()
+
+      pcall(luabench.main, { "ref", "benchmarks/" })
+
+      io.stderr:seek("set")
+      local stderr_output = io.stderr:read("*a")
+      io.stderr:close()
+      discover_mod.discover = original_discover
+      os.exit = original_exit -- luacheck: ignore 122
+      io.stderr = original_stderr
+
+      assert.are_equal(1, exit_code)
+      assert.matches("no targets specified", stderr_output)
+   end)
+
+   it("main calls runner.run with discovered files and targets", function()
+      local discover_mod = require("luabench.discover")
+      local runner_mod = require("luabench.runner")
+      local original_discover = discover_mod.discover
+      local original_run = runner_mod.run
+      local original_write = io.write
+
+      discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      local captured_files, captured_targets
+      runner_mod.run = function(files, targets)
+         captured_files = files
+         captured_targets = targets
+      end
+      io.write = function() end -- luacheck: ignore 122
+
+      luabench.main({ "ref", "benchmarks/", "-r", "/tmp/libv1", "-r", "/tmp/libv2" })
+
+      discover_mod.discover = original_discover
+      runner_mod.run = original_run
+      io.write = original_write -- luacheck: ignore 122
+
+      assert.are_same({ "bench1.lua" }, captured_files)
+      assert.are_same({ "/tmp/libv1", "/tmp/libv2" }, captured_targets)
    end)
 end)

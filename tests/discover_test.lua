@@ -3,12 +3,11 @@ local lfs = require("lfs")
 describe("discover", function()
    local discover
 
-   local fixtures_dir = "tests/fixtures/benchmarks"
-   local abs_fixtures
+   local FIXTURES_DIR = "tests/fixtures/benchmarks"
+   local ABS_FIXTURES = lfs.currentdir() .. "/" .. FIXTURES_DIR
 
    before_each(function()
       discover = require("luabench.discover").discover
-      abs_fixtures = lfs.currentdir() .. "/" .. fixtures_dir
    end)
 
    it("returns empty table for empty input", function()
@@ -18,13 +17,13 @@ describe("discover", function()
    end)
 
    it("returns absolute path for a single bench file", function()
-      local result = discover({ fixtures_dir .. "/sort_bench.lua" })
+      local result = discover({ FIXTURES_DIR .. "/sort_bench.lua" })
 
-      assert.are_same({ abs_fixtures .. "/sort_bench.lua" }, result)
+      assert.are_same({ ABS_FIXTURES .. "/sort_bench.lua" }, result)
    end)
 
    it("ignores non-benchmark lua files", function()
-      local result = discover({ fixtures_dir .. "/helper.lua" })
+      local result = discover({ FIXTURES_DIR .. "/helper.lua" })
 
       assert.are_same({}, result)
    end)
@@ -36,7 +35,7 @@ describe("discover", function()
    end)
 
    it("finds nested bench files recursively in directories", function()
-      local result = discover({ fixtures_dir })
+      local result = discover({ FIXTURES_DIR })
 
       assert.is_true(#result >= 3)
       for i = 1, #result do
@@ -45,7 +44,7 @@ describe("discover", function()
    end)
 
    it("returns results sorted alphabetically", function()
-      local result = discover({ fixtures_dir })
+      local result = discover({ FIXTURES_DIR })
 
       for i = 2, #result do
          assert.is_true(result[i - 1] <= result[i])
@@ -54,18 +53,12 @@ describe("discover", function()
 
    it("accepts a mix of files and directories", function()
       local result = discover({
-         fixtures_dir .. "/sort_bench.lua",
-         fixtures_dir .. "/sub",
+         FIXTURES_DIR .. "/sort_bench.lua",
+         FIXTURES_DIR .. "/sub",
       })
 
       assert.are_equal(2, #result)
       assert.matches("sort_bench%.lua$", result[1])
       assert.matches("nested_bench%.lua$", result[2])
-   end)
-
-   it("returns absolute paths for relative inputs", function()
-      local result = discover({ fixtures_dir .. "/sort_bench.lua" })
-
-      assert.matches("^/", result[1])
    end)
 end)

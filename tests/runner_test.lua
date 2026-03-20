@@ -90,157 +90,117 @@ describe("runner", function()
 
    -- run() orchestration with stubs
 
-   it("run calls compare_time and render for a single-Spec benchmark", function()
+   --- Set up luamark and io stubs for run() tests.
+   --- @return table spy_state, fun() teardown
+   local function setup_run_stubs()
       local luamark = require("luamark")
-      local original_compare = luamark.compare_time
-      local original_render = luamark.render
-      local compare_called = false
-      local compare_args
-      local render_called = false
+      local originals = {
+         compare = luamark.compare_time,
+         render = luamark.render,
+         write = io.write,
+         stderr = io.stderr,
+      }
+
+      local spy_state = { compare_calls = {}, output = {} }
 
       luamark.compare_time = function(funcs)
-         compare_called = true
-         compare_args = funcs
+         spy_state.compare_calls[#spy_state.compare_calls + 1] = funcs
          return {}
       end
       luamark.render = function()
-         render_called = true
          return "rendered"
       end
-
-      local original_write = io.write
-      local output = {}
       io.write = function(s) -- luacheck: ignore 122
-         output[#output + 1] = s
+         spy_state.output[#spy_state.output + 1] = s
       end
+      io.stderr = io.tmpfile()
+
+      local function teardown()
+         luamark.compare_time = originals.compare
+         luamark.render = originals.render
+         io.write = originals.write -- luacheck: ignore 122
+         io.stderr:close()
+         io.stderr = originals.stderr
+      end
+
+      return spy_state, teardown
+   end
+
+   --- Read captured stderr contents.
+   --- @return string
+   local function read_stderr()
+      io.stderr:seek("set")
+      return io.stderr:read("*a")
+   end
+
+   it("run calls compare_time with target specs and renders output with header", function()
+      local spy_state, teardown = setup_run_stubs()
 
       runner.run({ SORT_BENCH }, { LIBV1_DIR, LIBV2_DIR })
 
-      luamark.compare_time = original_compare
-      luamark.render = original_render
-      io.write = original_write -- luacheck: ignore 122
+      teardown()
 
-      assert.is_true(compare_called)
-      assert.is_true(render_called)
+      assert.are_equal(1, #spy_state.compare_calls)
+      local compare_args = spy_state.compare_calls[1]
       assert.is_not_nil(compare_args["libv1"])
       assert.is_not_nil(compare_args["libv2"])
-   end)
-
-   it("run prints header containing benchmark identity", function()
-      local luamark = require("luamark")
-      local original_compare = luamark.compare_time
-      local original_render = luamark.render
-      luamark.compare_time = function()
-         return {}
-      end
-      luamark.render = function()
-         return "rendered"
-      end
-
-      local original_write = io.write
-      local output = {}
-      io.write = function(s) -- luacheck: ignore 122
-         output[#output + 1] = s
-      end
-
-      runner.run({ SORT_BENCH }, { LIBV1_DIR, LIBV2_DIR })
-
-      luamark.compare_time = original_compare
-      luamark.render = original_render
-      io.write = original_write -- luacheck: ignore 122
-
-      local combined = table.concat(output)
+      local combined = table.concat(spy_state.output)
       assert.matches("sort", combined)
+      assert.matches("rendered", combined)
    end)
 
    it("run skips benchmark when load_benchmark returns nil for all targets", function()
-      local luamark = require("luamark")
-      local original_compare = luamark.compare_time
-      local compare_called = false
-      luamark.compare_time = function()
-         compare_called = true
-         return {}
-      end
-
-      local original_stderr = io.stderr
-      io.stderr = io.tmpfile()
+      local spy_state, teardown = setup_run_stubs()
 
       runner.run({ FIXTURE_DIR .. "/nonexistent_bench.lua" }, { LIBV1_DIR, LIBV2_DIR })
 
-      io.stderr:close()
-      io.stderr = original_stderr
-      luamark.compare_time = original_compare
+      teardown()
 
-      assert.is_false(compare_called)
+      assert.are_equal(0, #spy_state.compare_calls)
    end)
 
    it("run skips target when load fails and continues with remaining targets", function()
-      local luamark = require("luamark")
-      local original_compare = luamark.compare_time
-      local original_render = luamark.render
-      local compare_args
+      local spy_state, teardown = setup_run_stubs()
 
-      luamark.compare_time = function(funcs)
-         compare_args = funcs
-         return {}
-      end
-      luamark.render = function()
-         return "rendered"
-      end
-
-      local original_write = io.write
-      io.write = function() end -- luacheck: ignore 122
-
-      local original_stderr = io.stderr
-      io.stderr = io.tmpfile()
-
-      -- Use one valid target and one nonexistent target
       runner.run({ SORT_BENCH }, { LIBV1_DIR, "/nonexistent/target" })
 
-      io.stderr:close()
-      io.stderr = original_stderr
-      luamark.compare_time = original_compare
-      luamark.render = original_render
-      io.write = original_write -- luacheck: ignore 122
+      teardown()
 
-      assert.is_not_nil(compare_args)
-      assert.is_not_nil(compare_args["libv1"])
+      assert.are_equal(1, #spy_state.compare_calls)
+      assert.is_not_nil(spy_state.compare_calls[1]["libv1"])
    end)
 
    it("run handles named-Specs file calling compare_time per named Spec", function()
-      local luamark = require("luamark")
-      local original_compare = luamark.compare_time
-      local original_render = luamark.render
-      local compare_call_count = 0
-
-      luamark.compare_time = function()
-         compare_call_count = compare_call_count + 1
-         return {}
-      end
-      luamark.render = function()
-         return "rendered"
-      end
-
-      local original_write = io.write
-      io.write = function() end -- luacheck: ignore 122
-
+      local spy_state, teardown = setup_run_stubs()
       local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+
       runner.run({ multi_bench }, { LIBV1_DIR, LIBV2_DIR })
 
-      luamark.compare_time = original_compare
-      luamark.render = original_render
-      io.write = original_write -- luacheck: ignore 122
+      teardown()
 
-      -- multi_bench.lua has 2 named Specs (a and b), so compare_time should be called twice
-      assert.are_equal(2, compare_call_count)
+      assert.are_equal(2, #spy_state.compare_calls)
+   end)
+
+   it("run forwards Spec hook fields to compare_time", function()
+      local spy_state, teardown = setup_run_stubs()
+      local hooks_bench = FIXTURE_DIR .. "/benchmarks/hooks_bench.lua"
+
+      runner.run({ hooks_bench }, { LIBV1_DIR })
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+      local spec = spy_state.compare_calls[1]["libv1"]
+      assert.is_function(spec.fn)
+      assert.is_function(spec.before)
+      assert.is_function(spec.after)
+      assert.is_true(spec.baseline)
    end)
 
    it("run catches compare_time errors and continues", function()
+      local _, teardown = setup_run_stubs()
       local luamark = require("luamark")
-      local original_compare = luamark.compare_time
-      local original_render = luamark.render
       local call_count = 0
-
       luamark.compare_time = function()
          call_count = call_count + 1
          if call_count == 1 then
@@ -248,29 +208,14 @@ describe("runner", function()
          end
          return {}
       end
-      luamark.render = function()
-         return "rendered"
-      end
 
-      local original_write = io.write
-      io.write = function() end -- luacheck: ignore 122
-
-      local original_stderr = io.stderr
-      io.stderr = io.tmpfile()
-
-      -- Two bench files: first will fail at compare_time, second should succeed
       runner.run(
          { SORT_BENCH, FIXTURE_DIR .. "/benchmarks/sort_bench.lua" },
          { LIBV1_DIR, LIBV2_DIR }
       )
 
-      io.stderr:seek("set")
-      local stderr_output = io.stderr:read("*a")
-      io.stderr:close()
-      io.stderr = original_stderr
-      luamark.compare_time = original_compare
-      luamark.render = original_render
-      io.write = original_write -- luacheck: ignore 122
+      local stderr_output = read_stderr()
+      teardown()
 
       assert.matches("warning", stderr_output)
    end)

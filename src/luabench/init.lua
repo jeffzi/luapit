@@ -26,10 +26,11 @@ function M.build_parser()
    return parser
 end
 
---- Entry point for the CLI.
-function M.main()
+--- Parse CLI arguments and dispatch the requested command.
+--- @param argv string[]|nil CLI arguments (defaults to global arg table).
+function M.main(argv)
    local parser = M.build_parser()
-   local args = parser:parse()
+   local args = parser:parse(argv)
 
    if args.command == "ref" then
       local bench_files = discover.discover(args.paths)

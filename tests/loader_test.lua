@@ -52,50 +52,47 @@ describe("loader", function()
       assert.is_not_nil(result.named.b)
    end)
 
-   -- load_benchmark: error handling
+   -- load_benchmark: error handling (pcall failure path)
 
-   it("load_benchmark with syntax error returns nil and warns to stderr", function()
-      local filepath = FIXTURE_DIR .. "/syntax_error_bench.lua"
+   for _, case in ipairs({
+      {
+         file = "/syntax_error_bench.lua",
+         pattern = "syntax_error_bench%.lua",
+         desc = "syntax error",
+      },
+      {
+         file = "/nonexistent_bench.lua",
+         pattern = "nonexistent_bench%.lua",
+         desc = "nonexistent file",
+      },
+   }) do
+      it("load_benchmark with " .. case.desc .. " returns nil and warns to stderr", function()
+         local result = loader.load_benchmark(FIXTURE_DIR .. case.file)
 
-      local result = loader.load_benchmark(filepath)
+         assert.is_nil(result)
+         local err = read_stderr()
+         assert.matches("warning", err)
+         assert.matches(case.pattern, err)
+      end)
+   end
 
-      assert.is_nil(result)
-      local err = read_stderr()
-      assert.matches("warning", err)
-      assert.matches("syntax_error_bench%.lua", err)
-   end)
-
-   it("load_benchmark with nil return returns nil and warns to stderr", function()
-      local filepath = FIXTURE_DIR .. "/nil_return_bench.lua"
-
-      local result = loader.load_benchmark(filepath)
-
-      assert.is_nil(result)
-      local err = read_stderr()
-      assert.matches("warning", err)
-      assert.matches("did not return a table", err)
-   end)
+   -- load_benchmark: non-table return path
 
    it("load_benchmark with non-table return returns nil and warns to stderr", function()
-      local filepath = FIXTURE_DIR .. "/string_return_bench.lua"
+      local result_nil = loader.load_benchmark(FIXTURE_DIR .. "/nil_return_bench.lua")
+      local err_nil = read_stderr()
 
-      local result = loader.load_benchmark(filepath)
+      -- reset stderr for second call
+      io.stderr:close()
+      io.stderr = io.tmpfile()
 
-      assert.is_nil(result)
-      local err = read_stderr()
-      assert.matches("warning", err)
-      assert.matches("did not return a table", err)
-   end)
+      local result_str = loader.load_benchmark(FIXTURE_DIR .. "/string_return_bench.lua")
+      local err_str = read_stderr()
 
-   it("load_benchmark with nonexistent file returns nil and warns to stderr", function()
-      local filepath = FIXTURE_DIR .. "/nonexistent_bench.lua"
-
-      local result = loader.load_benchmark(filepath)
-
-      assert.is_nil(result)
-      local err = read_stderr()
-      assert.matches("warning", err)
-      assert.matches("nonexistent_bench%.lua", err)
+      assert.is_nil(result_nil)
+      assert.matches("did not return a table", err_nil)
+      assert.is_nil(result_str)
+      assert.matches("did not return a table", err_str)
    end)
 
    -- bench_id: identity derivation
