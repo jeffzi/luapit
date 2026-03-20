@@ -25,31 +25,28 @@ describe("loader", function()
       return io.stderr:read("*a")
    end
 
-   -- load_benchmark: single Spec format detection
+   -- load_benchmark: normalized spec map
 
-   it("load_benchmark with single Spec file returns { single = spec }", function()
+   it("load_benchmark with single Spec file returns spec keyed by empty string", function()
       local filepath = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
 
       local result = loader.load_benchmark(filepath)
 
       assert.is_not_nil(result)
-      assert.is_not_nil(result.single)
-      assert.is_nil(result.named)
-      assert.is_not_nil(result.single.fn)
+      assert.is_not_nil(result[""])
+      assert.is_function(result[""].fn)
    end)
 
-   -- load_benchmark: named Specs format detection
-
-   it("load_benchmark with named Specs file returns { named = specs }", function()
+   it("load_benchmark with named Specs file returns specs keyed by name", function()
       local filepath = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
 
       local result = loader.load_benchmark(filepath)
 
       assert.is_not_nil(result)
-      assert.is_not_nil(result.named)
-      assert.is_nil(result.single)
-      assert.is_not_nil(result.named.a)
-      assert.is_not_nil(result.named.b)
+      assert.is_not_nil(result.a)
+      assert.is_not_nil(result.b)
+      assert.is_function(result.a.fn)
+      assert.is_function(result.b.fn)
    end)
 
    -- load_benchmark: error handling (pcall failure path)
@@ -100,13 +97,13 @@ describe("loader", function()
    for _, case in ipairs({
       {
          filepath = "bench/sort_bench.lua",
-         spec_name = nil,
+         spec_name = "",
          expected = "bench/sort",
-         desc = "strips _bench.lua suffix",
+         desc = "strips _bench.lua suffix with empty spec name",
       },
       {
          filepath = "sort_bench.lua",
-         spec_name = nil,
+         spec_name = "",
          expected = "sort",
          desc = "strips suffix from bare filename",
       },

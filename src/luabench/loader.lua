@@ -1,8 +1,10 @@
 local M = {}
 
---- Load a benchmark file and detect its format.
+--- Load a benchmark file and return a normalized spec map.
+--- Single-Spec files (with a top-level `fn`) are keyed by `""`.
+--- Named-Spec files are returned as-is (keyed by spec name).
 --- @param filepath string Absolute path to a `*_bench.lua` file.
---- @return {single: table}|{named: table<string, table>}|nil
+--- @return table<string, table>|nil specs Spec map, or nil on error.
 function M.load_benchmark(filepath)
    local ok, result = pcall(dofile, filepath)
    if not ok then
@@ -18,9 +20,9 @@ function M.load_benchmark(filepath)
    end
 
    if result.fn ~= nil then
-      return { single = result }
+      return { [""] = result }
    else
-      return { named = result }
+      return result
    end
 end
 
@@ -30,7 +32,7 @@ end
 --- @return string
 function M.bench_id(filepath, spec_name)
    local id = filepath:gsub("_bench%.lua$", "")
-   if spec_name ~= nil then
+   if spec_name ~= nil and spec_name ~= "" then
       id = id .. "::" .. spec_name
    end
    return id

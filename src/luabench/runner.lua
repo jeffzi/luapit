@@ -87,30 +87,6 @@ local function load_targets(bench_file, targets)
    return loaded
 end
 
---- Run each named Spec across targets via separate compare_time calls.
---- @param rel_path string Relative path to the benchmark file.
---- @param loaded {name: string, result: table}[] Loaded benchmark results per target.
-local function run_named(rel_path, loaded)
-   local spec_names = {}
-   for name in pairs(loaded[1].result.named) do
-      spec_names[#spec_names + 1] = name
-   end
-   table.sort(spec_names)
-
-   for _, spec_name in ipairs(spec_names) do
-      local funcs = {}
-      for j = 1, #loaded do
-         local entry = loaded[j]
-         if entry.result.named[spec_name] ~= nil then
-            funcs[entry.name] = entry.result.named[spec_name]
-         end
-      end
-      if next(funcs) ~= nil then
-         run_single(loader.bench_id(rel_path, spec_name), funcs)
-      end
-   end
-end
-
 --- Run benchmarks across target directories.
 --- @param bench_files string[] Absolute paths to benchmark files.
 --- @param targets string[] Directory paths to benchmark against.
@@ -121,14 +97,23 @@ function M.run(bench_files, targets)
       local loaded = load_targets(bench_file, targets)
 
       if #loaded > 0 then
-         if loaded[1].result.single ~= nil then
+         local spec_names = {}
+         for name in pairs(loaded[1].result) do
+            spec_names[#spec_names + 1] = name
+         end
+         table.sort(spec_names)
+
+         for _, spec_name in ipairs(spec_names) do
             local funcs = {}
             for j = 1, #loaded do
-               funcs[loaded[j].name] = loaded[j].result.single
+               local entry = loaded[j]
+               if entry.result[spec_name] ~= nil then
+                  funcs[entry.name] = entry.result[spec_name]
+               end
             end
-            run_single(loader.bench_id(rel_path), funcs)
-         else
-            run_named(rel_path, loaded)
+            if next(funcs) ~= nil then
+               run_single(loader.bench_id(rel_path, spec_name), funcs)
+            end
          end
       end
    end
