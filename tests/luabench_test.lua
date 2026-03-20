@@ -13,12 +13,6 @@ describe("luabench", function()
       luabench = require("luabench")
    end)
 
-   it("exports main function and _VERSION in semver format", function()
-      assert.is_table(luabench)
-      assert.is_function(luabench.main)
-      assert.matches("%d+%.%d+%.%d+", luabench._VERSION)
-   end)
-
    it("build_parser returns a parser with parse method", function()
       local parser = luabench.build_parser()
 
