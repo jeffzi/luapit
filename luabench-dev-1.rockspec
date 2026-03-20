@@ -29,7 +29,7 @@ dependencies = {
    "lua >= 5.1",
    "argparse >= 0.7.1",
    "luamark >= 1.0.0",
-   "luafilesystem >= 1.8.0",
+   "penlight >= 1.11.0",
    "dkjson >= 2.5",
    "chronos >= 0.2",
    "terminal",

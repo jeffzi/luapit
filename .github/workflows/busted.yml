@@ -28,6 +28,7 @@ jobs:
       - name: Setup dependencies
         run: |
           luarocks install busted
+          luarocks install penlight
           luarocks install luamark
           luarocks install argparse --dev
           luarocks install dkjson
@@ -55,6 +56,7 @@ jobs:
         run: |
           luarocks install busted
           luarocks install luacov
+          luarocks install penlight
           luarocks install luamark
           luarocks install argparse
           luarocks install dkjson
