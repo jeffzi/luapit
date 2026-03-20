@@ -40,6 +40,7 @@ build = {
    modules = {
       luabench = "src/luabench/init.lua",
       ["luabench.discover"] = "src/luabench/discover.lua",
+      ["luabench.loader"] = "src/luabench/loader.lua",
    },
    install = {
       bin = {

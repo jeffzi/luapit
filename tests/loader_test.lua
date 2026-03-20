@@ -1,3 +1,4 @@
+---@diagnostic disable: need-check-nil
 local lfs = require("lfs")
 
 local loader = require("luabench.loader")
