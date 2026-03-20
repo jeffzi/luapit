@@ -41,6 +41,7 @@ build = {
       luabench = "src/luabench/init.lua",
       ["luabench.discover"] = "src/luabench/discover.lua",
       ["luabench.loader"] = "src/luabench/loader.lua",
+      ["luabench.runner"] = "src/luabench/runner.lua",
    },
    install = {
       bin = {
