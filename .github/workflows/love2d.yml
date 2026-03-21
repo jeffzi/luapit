@@ -1,0 +1,42 @@
+name: Love2D
+
+on: [push, pull_request]
+
+jobs:
+  love2d:
+    name: desktop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: "5.4"
+
+      - name: Setup LuaRocks
+        uses: leafo/gh-actions-luarocks@v6
+        with:
+          luaRocksVersion: "3.13.0"
+
+      - name: Setup Love2D
+        uses: remarkablegames/setup-love@v1
+        with:
+          version: "11.5"
+
+      - name: Install luabench
+        run: |
+          luarocks install busted
+          luarocks install penlight
+          luarocks install luamark
+          luarocks install argparse --dev
+          luarocks install dkjson
+          luarocks install chronos
+          luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
+          luarocks make
+
+      - name: Run Love2D integration test
+        timeout-minutes: 5
+        run: luabench ref . -R love -b tests/engines/fixtures/ -t
