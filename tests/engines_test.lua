@@ -44,11 +44,11 @@ describe("engines", function()
       assert.is_function(adapter.run)
    end)
 
-   it("get_adapter for defold attempts to require luabench.engines.defold", function()
-      local ok, err = pcall(engines.get_adapter, "defold")
+   it("get_adapter for defold returns the defold adapter module", function()
+      local adapter = engines.get_adapter("defold")
 
-      assert.is_false(ok)
-      assert.matches("defold", tostring(err))
+      assert.is_table(adapter)
+      assert.is_function(adapter.run)
    end)
 
    -- find_module_path() tests
