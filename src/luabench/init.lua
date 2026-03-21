@@ -1,11 +1,12 @@
 local argparse = require("argparse")
 local discover = require("luabench.discover")
+local export = require("luabench.export")
 local resolve = require("luabench.resolve")
 local runner = require("luabench.runner")
 
 local M = {}
 
-M._VERSION = "0.2.0"
+M._VERSION = "0.3.0"
 
 --- Build argparse parser with all CLI flags.
 --- @return table parser Configured argparse parser.
@@ -54,11 +55,19 @@ function M.main(argv)
       end
 
       -- Run benchmarks then cleanup (cleanup always runs per D-14)
-      local run_ok, run_err = pcall(runner.run, bench_files, targets)
+      local run_ok, run_result = pcall(runner.run, bench_files, targets)
       resolve.cleanup(targets)
       if not run_ok then
-         io.stderr:write("luabench: benchmark error: " .. tostring(run_err) .. "\n")
+         io.stderr:write("luabench: benchmark error: " .. tostring(run_result) .. "\n")
          os.exit(1)
+      end
+
+      if run_ok and args.output then
+         local ok, write_err = export.write_json(args.output, run_result, targets, M._VERSION)
+         if not ok then
+            io.stderr:write("luabench: failed to write JSON: " .. tostring(write_err) .. "\n")
+            os.exit(1)
+         end
       end
    end
 end

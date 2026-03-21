@@ -125,12 +125,14 @@ describe("luabench", function()
       local resolve_mod = require("luabench.resolve")
       local discover_mod = require("luabench.discover")
       local runner_mod = require("luabench.runner")
+      local export_mod = require("luabench.export")
 
       local originals = {
          resolve_targets = resolve_mod.resolve_targets,
          cleanup = resolve_mod.cleanup,
          discover = discover_mod.discover,
          run = runner_mod.run,
+         write_json = export_mod.write_json,
          exit = os.exit,
          stderr = io.stderr,
          write = io.write,
@@ -141,6 +143,7 @@ describe("luabench", function()
          cleanup_called_with = nil,
          discover_called_with = nil,
          run_called_with = nil,
+         write_json_called_with = nil,
          exit_code = nil,
       }
 
@@ -152,6 +155,7 @@ describe("luabench", function()
          resolve_mod.cleanup = originals.cleanup
          discover_mod.discover = originals.discover
          runner_mod.run = originals.run
+         export_mod.write_json = originals.write_json
          os.exit = originals.exit -- luacheck: ignore 122
          io.stderr:close()
          io.stderr = originals.stderr
@@ -171,6 +175,7 @@ describe("luabench", function()
          resolve_mod = resolve_mod,
          discover_mod = discover_mod,
          runner_mod = runner_mod,
+         export_mod = export_mod,
          teardown = teardown,
          read_stderr = read_stderr,
       }
@@ -373,5 +378,123 @@ describe("luabench", function()
 
       assert.are_same({ "bench1.lua", "bench2.lua" }, s.state.run_called_with.files)
       assert.are_same(resolved, s.state.run_called_with.targets)
+   end)
+
+   -- Export wiring tests
+
+   it("_VERSION is 0.3.0", function()
+      assert.are_equal("0.3.0", luabench._VERSION)
+   end)
+
+   it("main calls export.write_json when -o is specified", function()
+      local s = setup_main_stubs()
+      local resolved = {
+         { path = LIBV1_DIR, name = "libv1", cleanup = false },
+      }
+      local run_results = {
+         { file = "bench/sort", spec = "default", targets = {} },
+      }
+
+      s.resolve_mod.resolve_targets = function()
+         return resolved
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function()
+         return run_results
+      end
+      s.export_mod.write_json = function(filepath, results, targets, version)
+         s.state.write_json_called_with = {
+            filepath = filepath,
+            results = results,
+            targets = targets,
+            version = version,
+         }
+         return true
+      end
+
+      luabench.main({ "ref", ".#main", "-o", "/tmp/test_output.json" })
+
+      s.teardown()
+
+      assert.is_not_nil(s.state.write_json_called_with)
+      assert.are_equal(
+         "/tmp/test_output.json",
+         s.state.write_json_called_with.filepath
+      )
+      assert.are_same(run_results, s.state.write_json_called_with.results)
+      assert.are_same(resolved, s.state.write_json_called_with.targets)
+      assert.are_equal("0.3.0", s.state.write_json_called_with.version)
+   end)
+
+   it("main does not call export.write_json when -o is omitted", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return {
+            { path = LIBV1_DIR, name = "libv1", cleanup = false },
+         }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function()
+         return {}
+      end
+      s.export_mod.write_json = function(filepath, results, targets, version)
+         s.state.write_json_called_with = {
+            filepath = filepath,
+            results = results,
+            targets = targets,
+            version = version,
+         }
+         return true
+      end
+
+      luabench.main({ "ref", ".#main" })
+
+      s.teardown()
+
+      assert.is_nil(s.state.write_json_called_with)
+   end)
+
+   it("main does not call export.write_json when runner errors", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return {
+            { path = LIBV1_DIR, name = "libv1", cleanup = false },
+         }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function()
+         error("runner failed")
+      end
+      s.export_mod.write_json = function(filepath, results, targets, version)
+         s.state.write_json_called_with = {
+            filepath = filepath,
+            results = results,
+            targets = targets,
+            version = version,
+         }
+         return true
+      end
+      os.exit = function(code) -- luacheck: ignore 122
+         s.state.exit_code = code
+         error("EXIT")
+      end
+
+      pcall(luabench.main, { "ref", ".#main", "-o", "/tmp/out.json" })
+
+      s.teardown()
+
+      assert.is_nil(s.state.write_json_called_with)
+      assert.are_equal(1, s.state.exit_code)
    end)
 end)
