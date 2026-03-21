@@ -1,5 +1,6 @@
 local argparse = require("argparse")
 local discover = require("luabench.discover")
+local engines = require("luabench.engines")
 local export = require("luabench.export")
 local resolve = require("luabench.resolve")
 local runner = require("luabench.runner")
@@ -7,7 +8,7 @@ local subprocess = require("luabench.subprocess")
 
 local M = {}
 
-M._VERSION = "0.4.0"
+M._VERSION = "0.5.0"
 
 --- Parse raw parameter strings into a typed params table.
 --- @param raw_params string[] Array of "NAME:VALUE" strings.
@@ -105,13 +106,21 @@ function M.main(argv)
 
       -- Resolve runtime if -R specified (fail fast on error)
       if args.runtime then
-         local runtime_path, runtime_err = subprocess.resolve_runtime(args.runtime)
+         local engine_name = engines.detect(args.runtime)
+         local resolve_name = args.runtime
+         if engine_name == "defold" then
+            resolve_name = "dmengine_headless"
+         end
+         local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
          if runtime_path == nil then
             resolve.cleanup(targets)
             io.stderr:write("luabench: " .. runtime_err .. "\n")
             os.exit(1)
          end
          opts.runtime = runtime_path
+         if engine_name then
+            opts.engine_name = engine_name
+         end
       end
 
       -- Run benchmarks then cleanup (cleanup always runs)

@@ -1,4 +1,5 @@
 local Progress = require("luabench.progress")
+local engines = require("luabench.engines")
 local loader = require("luabench.loader")
 local luamark = require("luamark")
 local path = require("pl.path")
@@ -179,7 +180,7 @@ function M.run(bench_files, targets, opts)
    local filters = opts.filters
    local compare_opts = {}
    for k, v in pairs(opts) do
-      if k ~= "filters" and k ~= "runtime" then
+      if k ~= "filters" and k ~= "runtime" and k ~= "engine_name" then
          compare_opts[k] = v
       end
    end
@@ -239,7 +240,19 @@ function M.run(bench_files, targets, opts)
                   end
                end
                if #spec_targets > 0 then
+                  local engine_name = opts.engine_name
+                  local err_label = engine_name and "engine error" or "subprocess error"
                   local results = run_with_output(bench_id, bar, function()
+                     if engine_name then
+                        local adapter = engines.get_adapter(engine_name)
+                        return adapter.run(
+                           opts.runtime,
+                           info.bench_file,
+                           spec_targets,
+                           spec_name,
+                           compare_opts
+                        )
+                     end
                      return subprocess.run_subprocess(
                         opts.runtime,
                         info.bench_file,
@@ -247,7 +260,7 @@ function M.run(bench_files, targets, opts)
                         spec_name,
                         compare_opts
                      )
-                  end, "subprocess error")
+                  end, err_label)
                   pos = pos + 1
                   bar:update(pos, bench_id)
                   if results then

@@ -45,6 +45,10 @@ build = {
       ["luabench.resolve"] = "src/luabench/resolve.lua",
       ["luabench.progress"] = "src/luabench/progress.lua",
       ["luabench.runner"] = "src/luabench/runner.lua",
+      ["luabench.subprocess"] = "src/luabench/subprocess.lua",
+      ["luabench.engines"] = "src/luabench/engines/init.lua",
+      ["luabench.engines.love2d"] = "src/luabench/engines/love2d.lua",
+      ["luabench.engines.defold"] = "src/luabench/engines/defold.lua",
    },
    install = {
       bin = {

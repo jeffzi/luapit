@@ -605,6 +605,151 @@ describe("runner", function()
       assert.matches("subprocess error", stderr_output)
    end)
 
+   -- engine adapter routing tests
+
+   it(
+      "run with opts.engine_name calls adapter run instead of subprocess.run_subprocess",
+      function()
+         local spy_state, teardown = setup_run_stubs()
+         local engines = require("luabench.engines")
+         local subprocess = require("luabench.subprocess")
+         local original_get_adapter = engines.get_adapter
+         local original_run_subprocess = subprocess.run_subprocess
+
+         local adapter_calls = {}
+         local subprocess_calls = {}
+         local mock_adapter = {
+            run = function(runtime_path, bench_file, targets, spec_name, opts)
+               adapter_calls[#adapter_calls + 1] = {
+                  runtime_path = runtime_path,
+                  bench_file = bench_file,
+                  targets = targets,
+                  spec_name = spec_name,
+                  opts = opts,
+               }
+               return {
+                  {
+                     name = "libv1",
+                     median = 0.001,
+                     ci_lower = 0.0009,
+                     ci_upper = 0.0011,
+                     rounds = 1,
+                     rank = 1,
+                     relative = 1.0,
+                  },
+               }
+            end,
+         }
+
+         engines.get_adapter = function()
+            return mock_adapter
+         end
+         subprocess.run_subprocess = function(...)
+            subprocess_calls[#subprocess_calls + 1] = { ... }
+            return {
+               {
+                  name = "libv1",
+                  median = 0.001,
+                  ci_lower = 0.0009,
+                  ci_upper = 0.0011,
+                  rounds = 1,
+                  rank = 1,
+                  relative = 1.0,
+               },
+            }
+         end
+
+         runner.run(
+            { SORT_BENCH },
+            { { path = LIBV1_DIR, name = "libv1" } },
+            { runtime = "/usr/bin/love", engine_name = "love", rounds = 1 }
+         )
+
+         engines.get_adapter = original_get_adapter
+         subprocess.run_subprocess = original_run_subprocess
+         teardown()
+
+         assert.are_equal(1, #adapter_calls)
+         assert.are_equal(0, #subprocess_calls)
+         assert.are_equal(0, #spy_state.compare_calls)
+      end
+   )
+
+   it("run without opts.engine_name and with opts.runtime uses subprocess path", function()
+      local spy_state, teardown = setup_run_stubs()
+      local subprocess = require("luabench.subprocess")
+      local original_run_subprocess = subprocess.run_subprocess
+      local subprocess_calls = {}
+
+      subprocess.run_subprocess = function(...)
+         subprocess_calls[#subprocess_calls + 1] = { ... }
+         return {
+            {
+               name = "libv1",
+               median = 0.001,
+               ci_lower = 0.0009,
+               ci_upper = 0.0011,
+               rounds = 1,
+               rank = 1,
+               relative = 1.0,
+            },
+         }
+      end
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" } },
+         { runtime = "/usr/bin/luajit", rounds = 1 }
+      )
+
+      subprocess.run_subprocess = original_run_subprocess
+      teardown()
+
+      assert.are_equal(1, #subprocess_calls)
+      assert.are_equal(0, #spy_state.compare_calls)
+   end)
+
+   it("run with opts.engine_name does not forward engine_name to compare_opts", function()
+      local _, teardown = setup_run_stubs()
+      local engines = require("luabench.engines")
+      local original_get_adapter = engines.get_adapter
+      local captured_opts
+
+      local mock_adapter = {
+         run = function(_, _, _, _, opts)
+            captured_opts = opts
+            return {
+               {
+                  name = "libv1",
+                  median = 0.001,
+                  ci_lower = 0.0009,
+                  ci_upper = 0.0011,
+                  rounds = 1,
+                  rank = 1,
+                  relative = 1.0,
+               },
+            }
+         end,
+      }
+
+      engines.get_adapter = function()
+         return mock_adapter
+      end
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" } },
+         { runtime = "/usr/bin/love", engine_name = "love", rounds = 1 }
+      )
+
+      engines.get_adapter = original_get_adapter
+      teardown()
+
+      assert.is_not_nil(captured_opts)
+      assert.is_nil(captured_opts.engine_name)
+      assert.are_equal(1, captured_opts.rounds)
+   end)
+
    -- progress bar total bug
 
    it("run sets progress bar total to number of spec executions not files times targets", function()

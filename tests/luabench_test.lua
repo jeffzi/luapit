@@ -595,8 +595,8 @@ describe("luabench", function()
 
    -- Export wiring tests
 
-   it("_VERSION is 0.4.0", function()
-      assert.are_equal("0.4.0", luabench._VERSION)
+   it("_VERSION is 0.5.0", function()
+      assert.are_equal("0.5.0", luabench._VERSION)
    end)
 
    it("main calls export.write_json when -o is specified", function()
@@ -636,7 +636,7 @@ describe("luabench", function()
       assert.are_equal("/tmp/test_output.json", s.state.write_json_called_with.filepath)
       assert.are_same(run_results, s.state.write_json_called_with.results)
       assert.are_same(resolved, s.state.write_json_called_with.targets)
-      assert.are_equal("0.4.0", s.state.write_json_called_with.version)
+      assert.are_equal("0.5.0", s.state.write_json_called_with.version)
    end)
 
    it("main does not call export.write_json when -o is omitted", function()
