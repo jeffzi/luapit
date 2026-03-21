@@ -310,4 +310,37 @@ describe("runner", function()
 
       assert.are_equal("default", results[1].spec)
    end)
+
+   it("run with disabled progress bar still returns results normally", function()
+      local _, teardown = setup_run_stubs()
+
+      -- Non-TTY test environment auto-disables the progress bar
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      assert.is_table(results)
+      assert.are_equal(1, #results)
+      assert.is_string(results[1].file)
+      assert.is_table(results[1].targets)
+   end)
+
+   it("run with multiple bench files still works with progress bar integration", function()
+      local spy_state, teardown = setup_run_stubs()
+      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+
+      local results = runner.run(
+         { SORT_BENCH, multi_bench },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      -- sort_bench has 1 spec, multi_bench has 2 specs = 3 compare_time calls
+      assert.are_equal(3, #spy_state.compare_calls)
+      assert.are_equal(3, #results)
+   end)
 end)

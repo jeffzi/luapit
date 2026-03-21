@@ -1,6 +1,8 @@
 local loader = require("luabench.loader")
 local luamark = require("luamark")
 local path = require("pl.path")
+local Progress = require("luabench.progress")
+local system = require("system")
 
 local M = {}
 
@@ -72,17 +74,29 @@ local HEADER_PREFIX = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
 --- Run a single-Spec benchmark across targets.
 --- @param id string Benchmark identity string.
 --- @param funcs table<string, table> Map of target_name -> Spec.
+--- @param bar ProgressBar|nil Progress bar instance for suspend/resume around output.
 --- @return table[]|nil results Raw luamark compare_time results, or nil on error.
-local function run_single(id, funcs)
+local function run_single(id, funcs, bar)
+   if bar then
+      bar:suspend()
+   end
    io.write(string.format("\n%s %s\n", HEADER_PREFIX, id))
    local ok, results = pcall(luamark.compare_time, funcs)
    if not ok then
       io.stderr:write(
          string.format("luabench: warning: benchmark error in %s: %s\n", id, tostring(results))
       )
+      io.flush()
+      if bar then
+         bar:resume()
+      end
       return nil
    end
    io.write(luamark.render(results) .. "\n")
+   io.flush()
+   if bar then
+      bar:resume()
+   end
    return results
 end
 
@@ -117,6 +131,14 @@ end
 --- @return table[] all_results Flat array of {file, spec, targets} benchmark result entries.
 function M.run(bench_files, targets)
    local all_results = {}
+   local total = #bench_files * #targets
+   local bar = Progress({
+      total = total,
+      template = "{bar} {pos}/{len} {msg} [{elapsed}<{eta}]",
+      disable = not system.isatty(io.stderr),
+   })
+   bar:start()
+   local pos = 0
 
    for i = 1, #bench_files do
       local bench_file = bench_files[i]
@@ -146,7 +168,10 @@ function M.run(bench_files, targets)
                end
             end
             if next(funcs) ~= nil then
-               local results = run_single(loader.bench_id(rel_path, spec_name), funcs)
+               local bench_id = loader.bench_id(rel_path, spec_name)
+               local results = run_single(bench_id, funcs, bar)
+               pos = pos + 1
+               bar:update(pos, bench_id)
                if results ~= nil then
                   all_results[#all_results + 1] = {
                      file = rel_path:gsub("_bench%.lua$", ""),
@@ -159,6 +184,7 @@ function M.run(bench_files, targets)
       end
    end
 
+   bar:stop()
    return all_results
 end
 
