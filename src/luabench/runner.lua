@@ -6,6 +6,22 @@ local system = require("system")
 
 local M = {}
 
+--- Check if a bench ID matches any filter pattern (OR logic).
+--- @param bench_id string Benchmark identity string.
+--- @param filters string[]|nil Filter patterns.
+--- @return boolean
+local function matches_filter(bench_id, filters)
+   if not filters or #filters == 0 then
+      return true
+   end
+   for i = 1, #filters do
+      if bench_id:match(filters[i]) then
+         return true
+      end
+   end
+   return false
+end
+
 --- Take a snapshot of all current package.loaded keys.
 --- @return table<string, true>
 local function snapshot_loaded()
@@ -75,13 +91,14 @@ local HEADER_PREFIX = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
 --- @param id string Benchmark identity string.
 --- @param funcs table<string, table> Map of target_name -> Spec.
 --- @param bar ProgressBar|nil Progress bar instance for suspend/resume around output.
+--- @param opts table|nil Options to forward to luamark.compare_time.
 --- @return table[]|nil results Raw luamark compare_time results, or nil on error.
-local function run_single(id, funcs, bar)
+local function run_single(id, funcs, bar, opts)
    if bar then
       bar:suspend()
    end
    io.write(string.format("\n%s %s\n", HEADER_PREFIX, id))
-   local ok, results = pcall(luamark.compare_time, funcs)
+   local ok, results = pcall(luamark.compare_time, funcs, opts)
    if not ok then
       io.stderr:write(
          string.format("luabench: warning: benchmark error in %s: %s\n", id, tostring(results))
@@ -128,8 +145,18 @@ end
 --- Run benchmarks across targets.
 --- @param bench_files string[] Absolute paths to benchmark files.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
+--- @param opts table|nil Options: filters (string[]), rounds (number), params (table).
 --- @return table[] all_results Flat array of {file, spec, targets} benchmark result entries.
-function M.run(bench_files, targets)
+function M.run(bench_files, targets, opts)
+   opts = opts or {}
+   local filters = opts.filters
+   local compare_opts = {}
+   for k, v in pairs(opts) do
+      if k ~= "filters" and k ~= "runtime" then
+         compare_opts[k] = v
+      end
+   end
+
    local all_results = {}
    local total = #bench_files * #targets
    local bar = Progress({
@@ -169,15 +196,17 @@ function M.run(bench_files, targets)
             end
             if next(funcs) ~= nil then
                local bench_id = loader.bench_id(rel_path, spec_name)
-               local results = run_single(bench_id, funcs, bar)
-               pos = pos + 1
-               bar:update(pos, bench_id)
-               if results ~= nil then
-                  all_results[#all_results + 1] = {
-                     file = rel_path:gsub("_bench%.lua$", ""),
-                     spec = spec_name == "" and "default" or spec_name,
-                     targets = map_results(results),
-                  }
+               if matches_filter(bench_id, filters) then
+                  local results = run_single(bench_id, funcs, bar, compare_opts)
+                  pos = pos + 1
+                  bar:update(pos, bench_id)
+                  if results ~= nil then
+                     all_results[#all_results + 1] = {
+                        file = rel_path:gsub("_bench%.lua$", ""),
+                        spec = spec_name == "" and "default" or spec_name,
+                        targets = map_results(results),
+                     }
+                  end
                end
             end
          end

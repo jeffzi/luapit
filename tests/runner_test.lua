@@ -77,8 +77,8 @@ describe("runner", function()
 
       local spy_state = { compare_calls = {}, output = {} }
 
-      luamark.compare_time = function(funcs)
-         spy_state.compare_calls[#spy_state.compare_calls + 1] = funcs
+      luamark.compare_time = function(funcs, opts)
+         spy_state.compare_calls[#spy_state.compare_calls + 1] = { funcs = funcs, opts = opts }
          return {
             {
                name = "libv1",
@@ -137,7 +137,7 @@ describe("runner", function()
       teardown()
 
       assert.are_equal(1, #spy_state.compare_calls)
-      local compare_args = spy_state.compare_calls[1]
+      local compare_args = spy_state.compare_calls[1].funcs
       assert.is_not_nil(compare_args["libv1"])
       assert.is_not_nil(compare_args["libv2"])
       local combined = table.concat(spy_state.output)
@@ -175,7 +175,7 @@ describe("runner", function()
       teardown()
 
       assert.are_equal(1, #spy_state.compare_calls)
-      assert.is_not_nil(spy_state.compare_calls[1]["libv1"])
+      assert.is_not_nil(spy_state.compare_calls[1].funcs["libv1"])
    end)
 
    it("run handles named-Specs file calling compare_time per named Spec", function()
@@ -201,7 +201,7 @@ describe("runner", function()
       teardown()
 
       assert.are_equal(1, #spy_state.compare_calls)
-      local spec = spy_state.compare_calls[1]["libv1"]
+      local spec = spy_state.compare_calls[1].funcs["libv1"]
       assert.is_function(spec.fn)
       assert.is_function(spec.before)
       assert.is_function(spec.after)
@@ -342,5 +342,147 @@ describe("runner", function()
       -- sort_bench has 1 spec, multi_bench has 2 specs = 3 compare_time calls
       assert.are_equal(3, #spy_state.compare_calls)
       assert.are_equal(3, #results)
+   end)
+
+   -- opts and filtering tests
+
+   it("run with opts.filters matching a pattern only runs matching benchmarks", function()
+      local spy_state, teardown = setup_run_stubs()
+      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+
+      runner.run(
+         { SORT_BENCH, multi_bench },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { filters = { "sort" } }
+      )
+
+      teardown()
+
+      -- sort_bench matches "sort", multi_bench specs (alpha, beta) do not
+      assert.are_equal(1, #spy_state.compare_calls)
+   end)
+
+   it("run with multiple filters uses OR logic", function()
+      local spy_state, teardown = setup_run_stubs()
+      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+
+      runner.run(
+         { SORT_BENCH, multi_bench },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { filters = { "sort", "::a$" } }
+      )
+
+      teardown()
+
+      -- sort_bench matches "sort", multi_bench::a matches "::a$", multi_bench::b does not
+      assert.are_equal(2, #spy_state.compare_calls)
+   end)
+
+   it("run with empty filters runs all benchmarks", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { filters = {} }
+      )
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+   end)
+
+   it("run with filters eliminating all specs returns empty results without error", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { filters = { "nonexistent_pattern" } }
+      )
+
+      teardown()
+
+      assert.are_equal(0, #spy_state.compare_calls)
+      assert.are_same({}, results)
+   end)
+
+   it("run with opts.rounds forwards opts to compare_time", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { rounds = 1 }
+      )
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+      assert.are_equal(1, spy_state.compare_calls[1].opts.rounds)
+   end)
+
+   it("run with opts.params forwards params to compare_time", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { params = { n = { 1000 } } }
+      )
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+      assert.are_same({ n = { 1000 } }, spy_state.compare_calls[1].opts.params)
+   end)
+
+   it("run with combined opts forwards rounds and params to compare_time", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { rounds = 1, params = { n = { 100 } } }
+      )
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+      assert.are_equal(1, spy_state.compare_calls[1].opts.rounds)
+      assert.are_same({ n = { 100 } }, spy_state.compare_calls[1].opts.params)
+   end)
+
+   it("run does not forward filters or runtime keys to compare_time", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { rounds = 1, filters = { "sort" }, runtime = "/usr/bin/lua" }
+      )
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+      local opts = spy_state.compare_calls[1].opts
+      assert.are_equal(1, opts.rounds)
+      assert.is_nil(opts.filters)
+      assert.is_nil(opts.runtime)
+   end)
+
+   it("run without opts argument still works (backward compatibility)", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      assert.are_equal(1, #spy_state.compare_calls)
+      assert.is_table(results)
+      assert.are_equal(1, #results)
    end)
 end)
