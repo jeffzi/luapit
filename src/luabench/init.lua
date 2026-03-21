@@ -36,7 +36,7 @@ function M.main(argv)
    if args.command == "ref" then
       -- Resolve targets (fail fast per D-11)
       local targets, err = resolve.resolve_targets(args.targets)
-      if not targets then
+      if targets == nil then
          io.stderr:write("luabench: " .. err .. "\n")
          os.exit(1)
       end

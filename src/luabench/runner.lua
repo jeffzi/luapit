@@ -18,7 +18,7 @@ end
 --- @param snap table<string, true> Snapshot from snapshot_loaded().
 local function restore_loaded(snap)
    for k in pairs(package.loaded) do
-      if not snap[k] then
+      if snap[k] == nil then
          package.loaded[k] = nil
       end
    end
@@ -51,7 +51,7 @@ end
 --- @param id string Benchmark identity string.
 --- @param funcs table<string, table> Map of target_name -> Spec.
 local function run_single(id, funcs)
-   io.write("\n-- " .. id .. " --\n")
+   io.write(string.format("\n-- %s --\n", id))
    local ok, results = pcall(luamark.compare_time, funcs)
    if not ok then
       io.stderr:write(
@@ -98,12 +98,19 @@ function M.run(bench_files, targets)
 
       if #loaded > 0 then
          local spec_names = {}
-         for name in pairs(loaded[1].result) do
-            spec_names[#spec_names + 1] = name
+         local seen = {}
+         for j = 1, #loaded do
+            for name in pairs(loaded[j].result) do
+               if seen[name] == nil then
+                  seen[name] = true
+                  spec_names[#spec_names + 1] = name
+               end
+            end
          end
          table.sort(spec_names)
 
-         for _, spec_name in ipairs(spec_names) do
+         for si = 1, #spec_names do
+            local spec_name = spec_names[si]
             local funcs = {}
             for j = 1, #loaded do
                local entry = loaded[j]

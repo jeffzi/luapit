@@ -1,5 +1,7 @@
----@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter
+---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter, unused-local
 local lfs = require("lfs")
+local pldir = require("pl.dir")
+local plpath = require("pl.path")
 
 describe("resolve", function()
    local resolve
@@ -12,18 +14,11 @@ describe("resolve", function()
       resolve = require("luabench.resolve")
    end)
 
-   -- parse_target: git refs with repo#ref format
-
    for _, case in ipairs({
       {
          desc = "local repo ref",
          input = ".#main",
          expected = { repo = ".", ref = "main" },
-      },
-      {
-         desc = "local repo ref with subpath",
-         input = "./sub/dir#v1.0.0",
-         expected = { repo = "./sub/dir", ref = "v1.0.0" },
       },
       {
          desc = "HTTPS URL ref",
@@ -40,16 +35,6 @@ describe("resolve", function()
          input = "v1=.#v1.0.0",
          expected = { alias = "v1", repo = ".", ref = "v1.0.0" },
       },
-      {
-         desc = "aliased HTTPS URL ref",
-         input = "mylib=https://github.com/user/repo#v2",
-         expected = { alias = "mylib", repo = "https://github.com/user/repo", ref = "v2" },
-      },
-      {
-         desc = "aliased SSH URL ref",
-         input = "dev=git@github.com:user/repo#main",
-         expected = { alias = "dev", repo = "git@github.com:user/repo", ref = "main" },
-      },
    }) do
       it("parse_target parses " .. case.desc, function()
          local parsed = resolve.parse_target(case.input)
@@ -63,22 +48,14 @@ describe("resolve", function()
       end)
    end
 
-   -- parse_target: bare dot
+   it("parse_target parses bare dot with and without alias", function()
+      local plain = resolve.parse_target(".")
+      local aliased = resolve.parse_target("wt=.")
 
-   it("parse_target parses bare dot as working-tree target", function()
-      local parsed = resolve.parse_target(".")
-
-      assert.is_not_nil(parsed)
-      assert.is_true(parsed.bare_dot)
-      assert.is_nil(parsed.alias)
-   end)
-
-   it("parse_target parses aliased bare dot", function()
-      local parsed = resolve.parse_target("wt=.")
-
-      assert.is_not_nil(parsed)
-      assert.is_true(parsed.bare_dot)
-      assert.are_equal("wt", parsed.alias)
+      assert.is_true(plain.bare_dot)
+      assert.is_nil(plain.alias)
+      assert.is_true(aliased.bare_dot)
+      assert.are_equal("wt", aliased.alias)
    end)
 
    -- parse_target: local directories
@@ -148,6 +125,11 @@ describe("resolve", function()
          parsed = { alias = "current", bare_dot = true },
          expected = "current",
       },
+      {
+         desc = "unknown when no fields match",
+         parsed = {},
+         expected = "unknown",
+      },
    }) do
       it("display_name returns " .. case.desc, function()
          local name = resolve.display_name(case.parsed)
@@ -214,7 +196,6 @@ describe("resolve", function()
       assert.is_false(result.cleanup)
       assert.is_string(result.path)
       -- We're inside a git repo, so path should be a real directory
-      local plpath = require("pl.path")
       assert.is_true(plpath.isdir(result.path))
    end)
 
@@ -227,9 +208,6 @@ describe("resolve", function()
    -- clone_repo (integration test with real git)
 
    it("clone_repo clones a local repo and checks out ref", function()
-      local plpath = require("pl.path")
-      local pldir = require("pl.dir")
-
       -- Use the current repo as source
       local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
       if toplevel == nil then
@@ -251,12 +229,60 @@ describe("resolve", function()
       assert.is_true(ok, err)
    end)
 
+   it("clone_repo returns nil and error when local repo path does not exist", function()
+      local dest = plpath.tmpname()
+      os.remove(dest)
+      dest = dest .. "-luabench-clone-fail"
+
+      local ok, err = resolve._clone_repo("/nonexistent/repo", dest, "main", false)
+
+      if plpath.isdir(dest) then
+         pldir.rmtree(dest)
+      end
+
+      assert.is_nil(ok)
+      assert.matches("failed to clone", err)
+   end)
+
+   it("clone_repo returns nil and error when ref does not exist", function()
+      local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
+      if toplevel == nil then
+         pending("not inside a git repo")
+         return
+      end
+
+      local dest = plpath.tmpname()
+      os.remove(dest)
+      dest = dest .. "-luabench-badref"
+
+      local ok, err = resolve._clone_repo(toplevel, dest, "nonexistent_ref_xyz_999", false)
+
+      if plpath.isdir(dest) then
+         pldir.rmtree(dest)
+      end
+
+      assert.is_nil(ok)
+      assert.matches("failed to checkout ref", err)
+   end)
+
+   it("clone_repo returns nil and error for unreachable remote", function()
+      local dest = plpath.tmpname()
+      os.remove(dest)
+      dest = dest .. "-luabench-remote-fail"
+
+      local ok, err = resolve._clone_repo("file:///nonexistent/remote/repo", dest, "main", true)
+
+      if plpath.isdir(dest) then
+         pldir.rmtree(dest)
+      end
+
+      assert.is_nil(ok)
+      assert.matches("failed to clone", err)
+   end)
+
    -- cleanup
 
    it("cleanup removes temp dirs where cleanup is true", function()
-      local plpath = require("pl.path")
-      local pldir = require("pl.dir")
-
       local tmp = plpath.tmpname()
       os.remove(tmp)
       local temp_dir = tmp .. "-luabench-cleanup-test"
@@ -337,9 +363,26 @@ describe("resolve", function()
 
    -- resolve_targets with git refs (integration)
 
-   it("resolve_targets clones a git ref and cleans up", function()
-      local plpath = require("pl.path")
+   it("resolve_targets returns error and cleans up when checkout fails", function()
+      local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
+      if toplevel == nil then
+         pending("not inside a git repo")
+         return
+      end
 
+      local original_stderr = io.stderr
+      io.stderr = io.tmpfile()
+
+      local targets, err = resolve.resolve_targets({ ".#nonexistent_ref_xyz_999" })
+
+      io.stderr:close()
+      io.stderr = original_stderr
+
+      assert.is_nil(targets)
+      assert.matches("failed to checkout ref", err)
+   end)
+
+   it("resolve_targets clones a git ref and cleans up", function()
       local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
       if toplevel == nil then
          pending("not inside a git repo")

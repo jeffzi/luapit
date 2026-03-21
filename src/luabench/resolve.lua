@@ -22,7 +22,7 @@ end
 --- @return string|nil output Trimmed output, or nil on failure.
 local function capture(cmd)
    local h = io.popen(cmd)
-   if not h then
+   if h == nil then
       return nil
    end
    local out = h:read("*a")
@@ -42,40 +42,35 @@ end
 --- @return ParsedTarget|nil parsed Parsed target, or nil on error.
 --- @return string|nil err Error message if parsing failed.
 function M.parse_target(spec)
-   -- Extract alias if present
    local alias, rest = spec:match("^([^=]+)=(.+)$")
-   if not alias then
+   if alias == nil then
       rest = spec
    end
 
-   -- Bare "." - working tree
    if rest == "." then
       return { alias = alias, bare_dot = true }
    end
 
-   -- Try repo#ref patterns
    local repo, ref
 
    -- SSH: git@host:path#ref
    repo, ref = rest:match("^(git@[^#]+)#(.+)$")
-   if not repo then
+   if repo == nil then
       -- HTTPS: https://...#ref
       repo, ref = rest:match("^(https?://[^#]+)#(.+)$")
    end
-   if not repo then
+   if repo == nil then
       -- Local: .<optional-path>#ref
       repo, ref = rest:match("^(%.[^#]*)#(.+)$")
    end
-   if repo then
+   if repo ~= nil then
       return { alias = alias, repo = repo, ref = ref }
    end
 
-   -- Local directory (no #, must be existing dir)
    if path.isdir(rest) then
       return { alias = alias, local_dir = path.abspath(rest) }
    end
 
-   -- Invalid
    return nil,
       string.format(
          "invalid target: %q\n  Expected format: [alias=][repo]#ref or existing directory path\n"
@@ -133,10 +128,18 @@ local function make_temp_dir(prefix)
    local sanitized = prefix:gsub("[^%w%-_]", "_")
    local dir_path = tmp .. "-luabench-" .. sanitized
    local ok, err = pldir.makepath(dir_path)
-   if not ok then
+   if ok == nil then
       return nil, err
    end
    return dir_path
+end
+
+--- Wrap value in single quotes for POSIX-safe shell quoting,
+--- escaping any embedded single quotes.
+--- @param s string Value to quote for shell interpolation.
+--- @return string quoted Shell-safe quoted string.
+local function shellquote(s)
+   return "'" .. s:gsub("'", "'\\''") .. "'"
 end
 
 --- Detect whether a repository URL is remote.
@@ -156,27 +159,48 @@ end
 local function clone_repo(repo_url, dest_dir, ref, is_remote)
    if is_remote then
       -- Try shallow clone with --branch first (works for tags/branches)
-      local shallow_cmd =
-         string.format("git clone --depth 1 --branch %q %q %q 2>/dev/null", ref, repo_url, dest_dir)
+      local shallow_cmd = table.concat({
+         "git clone --depth 1 --branch",
+         shellquote(ref),
+         shellquote(repo_url),
+         shellquote(dest_dir),
+         "2>/dev/null",
+      }, " ")
       if exec_ok(shallow_cmd) then
          return true
       end
 
       -- Fall back to full clone (commit hash or other reason)
-      local full_cmd = string.format("git clone %q %q 2>/dev/null", repo_url, dest_dir)
+      local full_cmd = table.concat({
+         "git clone",
+         shellquote(repo_url),
+         shellquote(dest_dir),
+         "2>/dev/null",
+      }, " ")
       if not exec_ok(full_cmd) then
          return nil, string.format("failed to clone %q", repo_url)
       end
    else
       -- Local repos: always full clone (per D-13)
-      local cmd = string.format("git clone %q %q 2>/dev/null", repo_url, dest_dir)
+      local cmd = table.concat({
+         "git clone",
+         shellquote(repo_url),
+         shellquote(dest_dir),
+         "2>/dev/null",
+      }, " ")
       if not exec_ok(cmd) then
          return nil, string.format("failed to clone %q", repo_url)
       end
    end
 
    -- Checkout ref (needed for full clones that didn't use --branch)
-   local checkout_cmd = string.format("git -C %q checkout %q 2>/dev/null", dest_dir, ref)
+   local checkout_cmd = table.concat({
+      "git -C",
+      shellquote(dest_dir),
+      "checkout",
+      shellquote(ref),
+      "2>/dev/null",
+   }, " ")
    if not exec_ok(checkout_cmd) then
       return nil, string.format("failed to checkout ref %q in %q", ref, repo_url)
    end
@@ -188,12 +212,8 @@ end
 --- @param alias string|nil Optional alias override.
 --- @return ResolvedTarget result Resolved target.
 local function resolve_bare_dot(alias)
-   local resolved_path
-   if exec_ok("git rev-parse --show-toplevel 2>/dev/null") then
-      resolved_path = capture("git rev-parse --show-toplevel 2>/dev/null")
-   else
-      resolved_path = path.abspath(".")
-   end
+   local git_root = capture("git rev-parse --show-toplevel 2>/dev/null")
+   local resolved_path = (git_root and git_root ~= "") and git_root or path.abspath(".")
    return {
       path = resolved_path,
       name = alias or "working-tree",
@@ -224,11 +244,10 @@ function M.resolve_targets(raw_specs)
 
    -- Check for duplicate display names (per D-20)
    local ok, err = M.validate_targets(parsed_list)
-   if not ok then
+   if ok == nil then
       return nil, err
    end
 
-   -- Resolve each target
    local resolved = {}
    local cleanup_on_error = {}
 
@@ -245,23 +264,17 @@ function M.resolve_targets(raw_specs)
             cleanup = false,
          }
       elseif p.repo ~= nil and p.ref ~= nil then
-         -- Git ref: clone into temp dir
          local temp_dir, temp_err = make_temp_dir(p.ref)
          if temp_dir == nil then
-            -- Clean up already-created temp dirs
             M.cleanup(cleanup_on_error)
             return nil, "failed to create temp directory: " .. (temp_err or "unknown error")
          end
 
-         local repo_path = p.repo
-         if not is_remote_url(repo_path) then
-            -- Local repo: resolve to absolute path
-            repo_path = path.abspath(repo_path)
-         end
+         local is_remote = is_remote_url(p.repo)
+         local repo_path = is_remote and p.repo or path.abspath(p.repo)
 
-         local clone_ok, clone_err = clone_repo(repo_path, temp_dir, p.ref, is_remote_url(p.repo))
-         if not clone_ok then
-            -- Clean up this temp dir and already-created ones
+         local clone_ok, clone_err = clone_repo(repo_path, temp_dir, p.ref, is_remote)
+         if clone_ok == nil then
             cleanup_on_error[#cleanup_on_error + 1] =
                { path = temp_dir, name = name, cleanup = true }
             M.cleanup(cleanup_on_error)
@@ -298,7 +311,6 @@ function M.cleanup(targets)
    end
 end
 
--- Expose internal functions for testing
 M._exec_ok = exec_ok
 M._capture = capture
 M._resolve_bare_dot = resolve_bare_dot

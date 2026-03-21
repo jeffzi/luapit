@@ -14,59 +14,33 @@ describe("runner", function()
       runner = require("luabench.runner")
    end)
 
-   -- snapshot_loaded / restore_loaded isolation
+   it(
+      "with_target on success prepends path, cleans loaded, restores path, and returns result",
+      function()
+         local original_path = package.path
+         local captured_path
 
-   it("with_target restores package.path after successful call", function()
+         local result = runner.with_target(LIBV1_DIR, function()
+            captured_path = package.path
+            require("mylib")
+            return "hello"
+         end)
+
+         assert.matches(LIBV1_DIR, captured_path)
+         assert.is_nil(package.loaded["mylib"])
+         assert.are_equal(original_path, package.path)
+         assert.are_equal("hello", result)
+      end
+   )
+
+   it("with_target on error restores path and returns nil with error message", function()
       local original_path = package.path
 
-      runner.with_target(LIBV1_DIR, function()
-         return true
-      end)
-
-      assert.are_equal(original_path, package.path)
-   end)
-
-   it("with_target restores package.path even when fn errors", function()
-      local original_path = package.path
-
-      runner.with_target(LIBV1_DIR, function()
-         error("intentional error")
-      end)
-
-      assert.are_equal(original_path, package.path)
-   end)
-
-   it("with_target cleans package.loaded after fn completes", function()
-      runner.with_target(LIBV1_DIR, function()
-         require("mylib")
-      end)
-
-      assert.is_nil(package.loaded["mylib"])
-   end)
-
-   it("with_target prepends target dir to package.path inside fn", function()
-      local captured_path
-
-      runner.with_target(LIBV1_DIR, function()
-         captured_path = package.path
-      end)
-
-      assert.matches(LIBV1_DIR, captured_path)
-   end)
-
-   it("with_target returns fn result on success", function()
-      local result = runner.with_target(LIBV1_DIR, function()
-         return "hello"
-      end)
-
-      assert.are_equal("hello", result)
-   end)
-
-   it("with_target returns nil and error message on fn error", function()
       local result, err = runner.with_target(LIBV1_DIR, function()
          error("boom")
       end)
 
+      assert.are_equal(original_path, package.path)
       assert.is_nil(result)
       assert.matches("boom", err)
    end)
@@ -209,6 +183,20 @@ describe("runner", function()
       assert.is_function(spec.before)
       assert.is_function(spec.after)
       assert.is_true(spec.baseline)
+   end)
+
+   it("run collects spec names from all targets, not just the first", function()
+      local spy_state, teardown = setup_run_stubs()
+      local asym_bench = FIXTURE_DIR .. "/benchmarks/asymmetric_bench.lua"
+
+      runner.run(
+         { asym_bench },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      assert.are_equal(2, #spy_state.compare_calls)
    end)
 
    it("run catches compare_time errors and continues", function()
