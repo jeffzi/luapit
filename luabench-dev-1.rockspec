@@ -33,6 +33,7 @@ dependencies = {
    "dkjson >= 2.5",
    "chronos >= 0.2",
    "terminal",
+   "luasystem >= 0.6.3",
 }
 
 build = {
