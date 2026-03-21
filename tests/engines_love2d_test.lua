@@ -1,4 +1,4 @@
----@diagnostic disable: need-check-nil, duplicate-set-field
+---@diagnostic disable: need-check-nil, duplicate-set-field, redundant-parameter, missing-parameter
 local dir = require("pl.dir")
 local path = require("pl.path")
 

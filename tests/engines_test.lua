@@ -37,11 +37,11 @@ describe("engines", function()
 
    -- get_adapter() tests
 
-   it("get_adapter for love attempts to require luabench.engines.love2d", function()
-      local ok, err = pcall(engines.get_adapter, "love")
+   it("get_adapter for love returns the love2d adapter module", function()
+      local adapter = engines.get_adapter("love")
 
-      assert.is_false(ok)
-      assert.matches("love2d", tostring(err))
+      assert.is_table(adapter)
+      assert.is_function(adapter.run)
    end)
 
    it("get_adapter for defold attempts to require luabench.engines.defold", function()
