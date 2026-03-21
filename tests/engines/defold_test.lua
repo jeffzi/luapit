@@ -5,6 +5,20 @@ local path = require("pl.path")
 
 local defold
 
+--- Generate a wrapper with default arguments, allowing selective overrides.
+--- @param overrides? {bench_file?: string, targets?: table, spec_name?: string, opts?: table, result_path?: string}
+--- @return string wrapper
+local function make_wrapper(overrides)
+   local o = overrides or {}
+   return defold._generate_defold_wrapper(
+      o.bench_file or "/tmp/bench.lua",
+      o.targets or { { path = "/tmp/t", name = "v1" } },
+      o.spec_name or "",
+      o.opts or {},
+      o.result_path or "/tmp/result.json"
+   )
+end
+
 describe("engines.defold", function()
    before_each(function()
       package.loaded["luabench.engines.defold"] = nil
@@ -33,13 +47,7 @@ describe("engines.defold", function()
 
    -- Wrapper generation
    it("generate_defold_wrapper contains init callback with pcall and exit codes", function()
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/target1", name = "v1" } },
-         "",
-         {},
-         "/tmp/result.json"
-      )
+      local wrapper = make_wrapper()
 
       assert.matches("function init%(self%)", wrapper)
       assert.matches("os%.exit%(0%)", wrapper)
@@ -50,16 +58,10 @@ describe("engines.defold", function()
    end)
 
    it("generate_defold_wrapper has static requires before init function", function()
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/target1", name = "v1" } },
-         "",
-         {},
-         "/tmp/result.json"
-      )
+      local wrapper = make_wrapper()
 
-      local luamark_pos = wrapper:find('require%(\"luamark\"%)')
-      local dkjson_pos = wrapper:find('require%(\"dkjson\"%)')
+      local luamark_pos = wrapper:find('require%("luamark"%)')
+      local dkjson_pos = wrapper:find('require%("dkjson"%)')
       local init_pos = wrapper:find("function init%(self%)")
 
       assert.is_not_nil(luamark_pos)
@@ -70,13 +72,9 @@ describe("engines.defold", function()
    end)
 
    it("generate_defold_wrapper with targets includes package.path manipulation", function()
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/a", name = "a" }, { path = "/tmp/b", name = "b" } },
-         "",
-         {},
-         "/tmp/result.json"
-      )
+      local wrapper = make_wrapper({
+         targets = { { path = "/tmp/a", name = "a" }, { path = "/tmp/b", name = "b" } },
+      })
 
       assert.matches("package%.path", wrapper)
       assert.matches("/tmp/a", wrapper, 1, true)
@@ -84,37 +82,21 @@ describe("engines.defold", function()
    end)
 
    it("generate_defold_wrapper with spec_name extracts correct spec", function()
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/t", name = "v1" } },
-         "myspec",
-         {},
-         "/tmp/result.json"
-      )
+      local wrapper = make_wrapper({ spec_name = "myspec" })
 
       assert.matches("myspec", wrapper, 1, true)
    end)
 
    it("generate_defold_wrapper with opts.rounds includes rounds", function()
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/t", name = "v1" } },
-         "",
-         { rounds = 42 },
-         "/tmp/result.json"
-      )
+      local wrapper = make_wrapper({ opts = { rounds = 42 } })
 
       assert.matches("42", wrapper, 1, true)
    end)
 
    it("generate_defold_wrapper with opts.params includes sorted params", function()
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/t", name = "v1" } },
-         "",
-         { params = { z_param = { 1, 2 }, a_param = { "x" } } },
-         "/tmp/result.json"
-      )
+      local wrapper = make_wrapper({
+         opts = { params = { z_param = { 1, 2 }, a_param = { "x" } } },
+      })
 
       local a_pos = wrapper:find("a_param")
       local z_pos = wrapper:find("z_param")
@@ -124,16 +106,9 @@ describe("engines.defold", function()
    end)
 
    it("generate_defold_wrapper writes JSON to result_path via io.open", function()
-      local result_path = "/tmp/my_result.json"
-      local wrapper = defold._generate_defold_wrapper(
-         "/tmp/bench.lua",
-         { { path = "/tmp/t", name = "v1" } },
-         "",
-         {},
-         result_path
-      )
+      local wrapper = make_wrapper({ result_path = "/tmp/my_result.json" })
 
-      assert.matches(result_path, wrapper, 1, true)
+      assert.matches("/tmp/my_result.json", wrapper, 1, true)
       assert.matches("io%.open", wrapper)
       assert.matches("json%.encode", wrapper)
    end)
@@ -196,8 +171,11 @@ describe("engines.defold", function()
    it("check_java succeeds when java is available", function()
       -- Check if java is available
       local h = io.popen("command -v java 2>/dev/null")
-      local java_path = h:read("*a"):match("^(.-)%s*$")
-      h:close()
+      local java_path = ""
+      if h then
+         java_path = h:read("*a"):match("^(.-)%s*$") or ""
+         h:close()
+      end
 
       if not java_path or java_path == "" then
          pending("java not found in PATH")
@@ -237,8 +215,11 @@ describe("engines.defold", function()
    it("run executes a trivial benchmark with dmengine_headless and bob.jar", function()
       -- Check for dmengine_headless
       local h1 = io.popen("command -v dmengine_headless 2>/dev/null")
-      local dmengine = h1:read("*a"):match("^(.-)%s*$")
-      h1:close()
+      local dmengine = ""
+      if h1 then
+         dmengine = h1:read("*a"):match("^(.-)%s*$") or ""
+         h1:close()
+      end
 
       if not dmengine or dmengine == "" then
          pending("dmengine_headless not found in PATH")
@@ -249,8 +230,10 @@ describe("engines.defold", function()
       local bob = os.getenv("BOB")
       if not bob or bob == "" then
          local h2 = io.popen("command -v bob.jar 2>/dev/null")
-         bob = h2:read("*a"):match("^(.-)%s*$")
-         h2:close()
+         if h2 then
+            bob = h2:read("*a"):match("^(.-)%s*$") or ""
+            h2:close()
+         end
       end
       if not bob or bob == "" then
          pending("bob.jar not found (set BOB env var or add to PATH)")
@@ -259,8 +242,11 @@ describe("engines.defold", function()
 
       -- Check for java
       local h3 = io.popen("command -v java 2>/dev/null")
-      local java = h3:read("*a"):match("^(.-)%s*$")
-      h3:close()
+      local java = ""
+      if h3 then
+         java = h3:read("*a"):match("^(.-)%s*$") or ""
+         h3:close()
+      end
       if not java or java == "" then
          pending("java not found in PATH")
          return

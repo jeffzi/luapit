@@ -70,85 +70,18 @@ local INPUT_BINDING = [[key_trigger {
 local function generate_defold_wrapper(bench_file, targets, spec_name, opts, result_path)
    local parts = {}
 
-   -- Static top-level requires (Defold bundling per Pitfall 2)
+   -- Static top-level requires so Defold's build system detects and bundles them
    parts[#parts + 1] = 'local luamark = require("luamark")'
    parts[#parts + 1] = 'local json = require("dkjson")'
    parts[#parts + 1] = ""
    parts[#parts + 1] = "function init(self)"
    parts[#parts + 1] = "   local ok, err = pcall(function()"
 
-   -- Build targets table literal
-   parts[#parts + 1] = "      local targets = {"
-   for i = 1, #targets do
-      parts[#parts + 1] =
-         string.format("         { path = %q, name = %q },", targets[i].path, targets[i].name)
-   end
-   parts[#parts + 1] = "      }"
-   parts[#parts + 1] = ""
-
-   -- Iterate targets, load benchmark for each, extract spec
-   parts[#parts + 1] = "      local funcs = {}"
-   parts[#parts + 1] = "      for i = 1, #targets do"
-   parts[#parts + 1] = "         local t = targets[i]"
-   parts[#parts + 1] = "         local original_path = package.path"
-   parts[#parts + 1] = "         local snap = {}"
-   parts[#parts + 1] = "         for k in pairs(package.loaded) do snap[k] = true end"
-   parts[#parts + 1] =
-      '         package.path = t.path .. "/?.lua;" .. t.path .. "/?/init.lua;" .. original_path'
-   parts[#parts + 1] = string.format("         local bench = dofile(%q)", bench_file)
-   parts[#parts + 1] = "         if bench.fn ~= nil then bench = { [''] = bench } end"
-   parts[#parts + 1] = string.format("         local spec = bench[%q]", spec_name)
-   parts[#parts + 1] = "         if spec ~= nil then funcs[t.name] = spec end"
-   parts[#parts + 1] = "         for k in pairs(package.loaded) do"
-   parts[#parts + 1] = "            if snap[k] == nil then package.loaded[k] = nil end"
-   parts[#parts + 1] = "         end"
-   parts[#parts + 1] = "         package.path = original_path"
-   parts[#parts + 1] = "      end"
-   parts[#parts + 1] = ""
-
-   -- Build opts table
-   parts[#parts + 1] = "      local opts = {}"
-   if opts.rounds then
-      parts[#parts + 1] = string.format("      opts.rounds = %d", opts.rounds)
-   end
-   if opts.params then
-      parts[#parts + 1] = "      opts.params = {"
-      local param_names = {}
-      for name in pairs(opts.params) do
-         param_names[#param_names + 1] = name
-      end
-      table.sort(param_names)
-      for _, name in ipairs(param_names) do
-         local values = opts.params[name]
-         local vals = {}
-         for j = 1, #values do
-            local v = values[j]
-            if type(v) == "string" then
-               vals[#vals + 1] = string.format("%q", v)
-            else
-               vals[#vals + 1] = tostring(v)
-            end
-         end
-         parts[#parts + 1] =
-            string.format("         [%q] = { %s },", name, table.concat(vals, ", "))
-      end
-      parts[#parts + 1] = "      }"
-   end
-   parts[#parts + 1] = ""
-
-   -- Call compare_time and write results
-   parts[#parts + 1] = "      local results = luamark.compare_time(funcs, opts)"
-   parts[#parts + 1] = string.format("      local f = io.open(%q, 'w')", result_path)
-   parts[#parts + 1] = "      if not f then error('cannot open ' .. "
-      .. string.format("%q", result_path)
-      .. ") end"
-   parts[#parts + 1] = "      f:write(json.encode(results))"
-   parts[#parts + 1] = "      f:close()"
+   engines.append_wrapper_body(parts, bench_file, targets, spec_name, opts, result_path)
 
    parts[#parts + 1] = "   end)"
    parts[#parts + 1] = "   if not ok then"
-   parts[#parts + 1] =
-      '      io.stderr:write("luabench: engine error: " .. tostring(err) .. "\\n")'
+   parts[#parts + 1] = '      io.stderr:write("luabench: engine error: " .. tostring(err) .. "\\n")'
    parts[#parts + 1] = "      os.exit(1)"
    parts[#parts + 1] = "      return"
    parts[#parts + 1] = "   end"
@@ -159,7 +92,7 @@ local function generate_defold_wrapper(bench_file, targets, spec_name, opts, res
 end
 
 --- Locate bob.jar for the Defold build step.
---- Check $BOB env var first, fall back to command -v bob.jar.
+--- Check $BOB env var first, fall back to PATH lookup.
 --- @return string|nil path Path to bob.jar.
 --- @return string|nil err Error message if not found.
 local function locate_bob()
@@ -167,54 +100,21 @@ local function locate_bob()
    if bob and bob ~= "" then
       return bob
    end
-   local h = io.popen("command -v bob.jar 2>/dev/null")
-   if h then
-      local result = h:read("*a")
-      h:close()
-      result = result:match("^(.-)%s*$")
-      if result and result ~= "" then
-         return result
-      end
+   local found = engines.find_command("bob.jar")
+   if found then
+      return found
    end
-   return nil,
-      "bob.jar not found: set BOB environment variable or add bob.jar to PATH"
+   return nil, "bob.jar not found: set BOB environment variable or add bob.jar to PATH"
 end
 
 --- Check that java is available in PATH.
 --- @return true|nil ok True if java found.
 --- @return string|nil err Error message if not found.
 local function check_java()
-   local h = io.popen("command -v java 2>/dev/null")
-   if h then
-      local result = h:read("*a")
-      h:close()
-      result = result:match("^(.-)%s*$")
-      if result and result ~= "" then
-         return true
-      end
+   if engines.find_command("java") then
+      return true
    end
    return nil, "java not found in PATH (required by Defold bob.jar)"
-end
-
---- Copy a file from src to dst.
---- @param src string Source file path.
---- @param dst string Destination file path.
---- @return boolean ok True on success.
---- @return string|nil err Error message on failure.
-local function copy_file(src, dst)
-   local sf = io.open(src, "rb")
-   if not sf then
-      return false, "cannot open source: " .. src
-   end
-   local content = sf:read("*a")
-   sf:close()
-   local df = io.open(dst, "wb")
-   if not df then
-      return false, "cannot open destination: " .. dst
-   end
-   df:write(content)
-   df:close()
-   return true
 end
 
 --- Scaffold a minimal Defold project in a temp directory.
@@ -280,13 +180,13 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, "cannot locate dkjson: " .. tostring(dkjson_err)
    end
 
-   ok, err = copy_file(luamark_path, tmpdir .. "/main/luamark.lua")
+   ok, err = engines.copy_file(luamark_path, tmpdir .. "/main/luamark.lua")
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
    end
 
-   ok, err = copy_file(dkjson_path, tmpdir .. "/main/dkjson.lua")
+   ok, err = engines.copy_file(dkjson_path, tmpdir .. "/main/dkjson.lua")
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
@@ -338,17 +238,27 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
    --- @cast result_path string
 
+   --- Clean up all temporary files.
+   local function cleanup()
+      pcall(dir.rmtree, tmpdir)
+      pcall(os.remove, result_path)
+   end
+
+   --- Extract trimmed error output from executeex stderr/stdout.
+   local function trim_output(stderr, stdout)
+      return ((stderr or stdout or ""):match("^(.-)%s*$")) or ""
+   end
+
    -- Build with bob.jar
    local build_cmd = string.format(
-      "java -jar %s --root %s resolve build --archive 2>&1",
+      "java -jar %s --root %s resolve build --archive",
       quote_arg(bob),
       quote_arg(tmpdir)
    )
    local build_ok, _, build_stdout, build_stderr = utils.executeex(build_cmd)
    if not build_ok then
-      local output = (build_stderr or build_stdout or ""):match("^(.-)%s*$") or ""
-      dir.rmtree(tmpdir)
-      pcall(os.remove, result_path)
+      local output = trim_output(build_stderr, build_stdout)
+      cleanup()
       if output ~= "" then
          return nil, "Defold build failed: " .. output
       end
@@ -356,16 +266,11 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
 
    -- Run dmengine_headless from project directory
-   local run_cmd = string.format(
-      "cd %s && %s 2>&1",
-      quote_arg(tmpdir),
-      quote_arg(runtime_path)
-   )
+   local run_cmd = string.format("cd %s && %s", quote_arg(tmpdir), quote_arg(runtime_path))
    local run_ok, _, run_stdout, run_stderr = utils.executeex(run_cmd)
    if not run_ok then
-      local output = (run_stderr or run_stdout or ""):match("^(.-)%s*$") or ""
-      dir.rmtree(tmpdir)
-      pcall(os.remove, result_path)
+      local output = trim_output(run_stderr, run_stdout)
+      cleanup()
       if output ~= "" then
          return nil, "dmengine_headless failed: " .. output
       end
@@ -375,19 +280,13 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    -- Read results
    local rf = io.open(result_path, "r")
    if not rf then
-      dir.rmtree(tmpdir)
-      pcall(os.remove, result_path)
+      cleanup()
       return nil, "Defold process did not produce results"
    end
    local content = rf:read("*a")
    rf:close()
 
-   -- Cleanup
-   dir.rmtree(tmpdir)
-   pcall(os.remove, result_path)
-   -- Remove the base tmpname files if they exist
-   local result_base = result_path:gsub("%.json$", "")
-   pcall(os.remove, result_base)
+   cleanup()
 
    -- Parse JSON
    local json = require("dkjson")

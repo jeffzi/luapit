@@ -47,77 +47,11 @@ local function generate_love_wrapper(bench_file, targets, spec_name, opts, resul
    parts[#parts + 1] = '      local json = require("dkjson")'
    parts[#parts + 1] = ""
 
-   -- Build targets table literal
-   parts[#parts + 1] = "      local targets = {"
-   for i = 1, #targets do
-      parts[#parts + 1] =
-         string.format("         { path = %q, name = %q },", targets[i].path, targets[i].name)
-   end
-   parts[#parts + 1] = "      }"
-   parts[#parts + 1] = ""
+   engines.append_wrapper_body(parts, bench_file, targets, spec_name, opts, result_path)
 
-   -- Iterate targets, load benchmark for each, extract spec
-   parts[#parts + 1] = "      local funcs = {}"
-   parts[#parts + 1] = "      for i = 1, #targets do"
-   parts[#parts + 1] = "         local t = targets[i]"
-   parts[#parts + 1] = "         local original_path = package.path"
-   parts[#parts + 1] = "         local snap = {}"
-   parts[#parts + 1] = "         for k in pairs(package.loaded) do snap[k] = true end"
-   parts[#parts + 1] = '         package.path = t.path .. "/?.lua;" .. t.path'
-      .. ' .. "/?/init.lua;" .. original_path'
-   parts[#parts + 1] = string.format("         local bench = dofile(%q)", bench_file)
-   parts[#parts + 1] = "         if bench.fn ~= nil then bench = { [''] = bench } end"
-   parts[#parts + 1] = string.format("         local spec = bench[%q]", spec_name)
-   parts[#parts + 1] = "         if spec ~= nil then funcs[t.name] = spec end"
-   parts[#parts + 1] = "         for k in pairs(package.loaded) do"
-   parts[#parts + 1] = "            if snap[k] == nil then package.loaded[k] = nil end"
-   parts[#parts + 1] = "         end"
-   parts[#parts + 1] = "         package.path = original_path"
-   parts[#parts + 1] = "      end"
-   parts[#parts + 1] = ""
-
-   -- Build opts table
-   parts[#parts + 1] = "      local opts = {}"
-   if opts.rounds then
-      parts[#parts + 1] = string.format("      opts.rounds = %d", opts.rounds)
-   end
-   if opts.params then
-      parts[#parts + 1] = "      opts.params = {"
-      local param_names = {}
-      for name in pairs(opts.params) do
-         param_names[#param_names + 1] = name
-      end
-      table.sort(param_names)
-      for _, name in ipairs(param_names) do
-         local values = opts.params[name]
-         local vals = {}
-         for j = 1, #values do
-            local v = values[j]
-            if type(v) == "string" then
-               vals[#vals + 1] = string.format("%q", v)
-            else
-               vals[#vals + 1] = tostring(v)
-            end
-         end
-         parts[#parts + 1] =
-            string.format("         [%q] = { %s },", name, table.concat(vals, ", "))
-      end
-      parts[#parts + 1] = "      }"
-   end
-   parts[#parts + 1] = ""
-
-   -- Call compare_time and write results
-   parts[#parts + 1] = "      local results = luamark.compare_time(funcs, opts)"
-   parts[#parts + 1] = string.format("      local f = io.open(%q, 'w')", result_path)
-   parts[#parts + 1] = "      if not f then error('cannot open ' .. "
-      .. string.format("%q", result_path)
-      .. ") end"
-   parts[#parts + 1] = "      f:write(json.encode(results))"
-   parts[#parts + 1] = "      f:close()"
    parts[#parts + 1] = "   end)"
    parts[#parts + 1] = "   if not ok then"
-   parts[#parts + 1] =
-      '      io.stderr:write("luabench: engine error: " .. tostring(err) .. "\\n")'
+   parts[#parts + 1] = '      io.stderr:write("luabench: engine error: " .. tostring(err) .. "\\n")'
    parts[#parts + 1] = "      love.event.quit(1)"
    parts[#parts + 1] = "      return"
    parts[#parts + 1] = "   end"
@@ -125,29 +59,6 @@ local function generate_love_wrapper(bench_file, targets, spec_name, opts, resul
    parts[#parts + 1] = "end"
 
    return table.concat(parts, "\n")
-end
-
---- Copy a file from src to dst using binary-safe read/write.
---- @param src string Source file path.
---- @param dst string Destination file path.
---- @return boolean ok True on success.
---- @return string|nil err Error message on failure.
-local function copy_file(src, dst)
-   local rf = io.open(src, "rb")
-   if not rf then
-      return false, "cannot read: " .. src
-   end
-   local content = rf:read("*a")
-   rf:close()
-
-   local wf = io.open(dst, "wb")
-   if not wf then
-      return false, "cannot write: " .. dst
-   end
-   wf:write(content)
-   wf:close()
-
-   return true
 end
 
 --- Create a temporary Love2D project directory with all required files.
@@ -180,14 +91,14 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    end
 
    -- Copy luamark.lua
-   local cp_ok, cp_err = copy_file(luamark_path, tmpdir .. "/luamark.lua")
+   local cp_ok, cp_err = engines.copy_file(luamark_path, tmpdir .. "/luamark.lua")
    if not cp_ok then
       dir.rmtree(tmpdir)
       return nil, cp_err
    end
 
    -- Copy dkjson.lua
-   cp_ok, cp_err = copy_file(dkjson_path, tmpdir .. "/dkjson.lua")
+   cp_ok, cp_err = engines.copy_file(dkjson_path, tmpdir .. "/dkjson.lua")
    if not cp_ok then
       dir.rmtree(tmpdir)
       return nil, cp_err
@@ -212,8 +123,6 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    local mf = io.open(tmpdir .. "/main.lua", "w")
    if not mf then
       dir.rmtree(tmpdir)
-      os.remove(result_path)
-      os.remove(result_base)
       return nil, "failed to write main.lua"
    end
    mf:write(wrapper)
@@ -238,14 +147,10 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
    ---@cast result_path string
 
-   -- Derive result_base for cleanup (result_path = result_base .. ".json")
-   local result_base = result_path:gsub("%.json$", "")
-
    --- Clean up all temporary files.
    local function cleanup()
       pcall(dir.rmtree, tmpdir)
       pcall(os.remove, result_path)
-      pcall(os.remove, result_base)
    end
 
    -- Execute love <tmpdir>

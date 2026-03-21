@@ -10,6 +10,35 @@ describe("engines.love2d", function()
    local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
    local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
    local SORT_BENCH = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
+   local DEFAULT_TARGETS = { { path = LIBV1_DIR, name = "libv1" } }
+
+   --- Generate a wrapper with default arguments, allowing selective overrides.
+   --- @param overrides? {bench_file?: string, targets?: table, spec_name?: string, opts?: table, result_path?: string}
+   --- @return string wrapper
+   local function make_wrapper(overrides)
+      local o = overrides or {}
+      return love2d._generate_love_wrapper(
+         o.bench_file or SORT_BENCH,
+         o.targets or DEFAULT_TARGETS,
+         o.spec_name or "",
+         o.opts or {},
+         o.result_path or "/tmp/test_results.json"
+      )
+   end
+
+   --- Temporarily stub engines.find_module_path, run a callback, then restore.
+   --- @param stub fun(original: function): function Factory receiving the original; returns the stub.
+   --- @param callback function Code to run while stub is active.
+   local function with_find_module_stub(stub, callback)
+      local engines = require("luabench.engines")
+      local original = engines.find_module_path
+      engines.find_module_path = stub(original)
+      local ok, err = pcall(callback)
+      engines.find_module_path = original
+      if not ok then
+         error(err, 2)
+      end
+   end
 
    before_each(function()
       package.loaded["luabench.engines.love2d"] = nil
@@ -48,13 +77,7 @@ describe("engines.love2d", function()
    -- generate_love_wrapper tests
 
    it("_generate_love_wrapper produces wrapper with love.load and love.event.quit", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper()
 
       assert.is_string(wrapper)
       assert.matches("function love%.load", wrapper)
@@ -63,52 +86,28 @@ describe("engines.love2d", function()
    end)
 
    it("_generate_love_wrapper contains pcall error handling", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper()
 
       assert.matches("pcall", wrapper)
       assert.matches("io%.stderr", wrapper)
    end)
 
    it("_generate_love_wrapper requires luamark and dkjson with literal strings", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper()
 
       assert.matches('require%("luamark"%)', wrapper)
       assert.matches('require%("dkjson"%)', wrapper)
    end)
 
    it("_generate_love_wrapper loads benchmark via dofile with absolute path", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper()
 
       assert.matches("dofile", wrapper)
       assert.matches(SORT_BENCH:gsub("[%(%)%.%%+%-%*%?%[%]%^%$]", "%%%0"), wrapper)
    end)
 
    it("_generate_love_wrapper writes JSON to result_path via io.open", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper()
 
       assert.matches("io%.open", wrapper)
       assert.matches("encode", wrapper)
@@ -116,10 +115,12 @@ describe("engines.love2d", function()
    end)
 
    it("_generate_love_wrapper with multiple targets includes all target paths", function()
-      local wrapper = love2d._generate_love_wrapper(SORT_BENCH, {
-         { path = LIBV1_DIR, name = "libv1" },
-         { path = LIBV2_DIR, name = "libv2" },
-      }, "", {}, "/tmp/test_results.json")
+      local wrapper = make_wrapper({
+         targets = {
+            { path = LIBV1_DIR, name = "libv1" },
+            { path = LIBV2_DIR, name = "libv2" },
+         },
+      })
 
       assert.matches("libv1", wrapper)
       assert.matches("libv2", wrapper)
@@ -127,37 +128,21 @@ describe("engines.love2d", function()
    end)
 
    it("_generate_love_wrapper with spec_name extracts correct spec", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "my_spec",
-         {},
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper({ spec_name = "my_spec" })
 
       assert.matches("my_spec", wrapper)
    end)
 
    it("_generate_love_wrapper with opts.rounds includes rounds", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         { rounds = 42 },
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper({ opts = { rounds = 42 } })
 
       assert.matches("42", wrapper)
    end)
 
    it("_generate_love_wrapper with opts.params includes sorted params", function()
-      local wrapper = love2d._generate_love_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         { params = { z = { 1 }, a = { 2 }, m = { 3 } } },
-         "/tmp/test_results.json"
-      )
+      local wrapper = make_wrapper({
+         opts = { params = { z = { 1 }, a = { 2 }, m = { 3 } } },
+      })
 
       local pos_a = wrapper:find('"a"', 1, true)
       local pos_m = wrapper:find('"m"', 1, true)
@@ -172,12 +157,7 @@ describe("engines.love2d", function()
    -- scaffold_project tests
 
    it("_scaffold_project creates temp dir with expected files", function()
-      local tmpdir, result_path = love2d._scaffold_project(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {}
-      )
+      local tmpdir, result_path = love2d._scaffold_project(SORT_BENCH, DEFAULT_TARGETS, "", {})
 
       assert.is_string(tmpdir)
       assert.is_string(result_path)
@@ -195,75 +175,53 @@ describe("engines.love2d", function()
    end)
 
    it("_scaffold_project returns nil and error when luamark cannot be found", function()
-      local engines = require("luabench.engines")
-      local original = engines.find_module_path
-      engines.find_module_path = function(name)
-         if name == "luamark" then
-            return nil, "module source not found: luamark"
+      with_find_module_stub(function(original)
+         return function(name)
+            if name == "luamark" then
+               return nil, "module source not found: luamark"
+            end
+            return original(name)
          end
-         return original(name)
-      end
+      end, function()
+         local tmpdir, err = love2d._scaffold_project(SORT_BENCH, DEFAULT_TARGETS, "", {})
 
-      local tmpdir, err = love2d._scaffold_project(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {}
-      )
-
-      engines.find_module_path = original
-
-      assert.is_nil(tmpdir)
-      assert.is_string(err)
-      assert.matches("luamark", err)
+         assert.is_nil(tmpdir)
+         assert.is_string(err)
+         assert.matches("luamark", err)
+      end)
    end)
 
    it("_scaffold_project returns nil and error when dkjson cannot be found", function()
-      local engines = require("luabench.engines")
-      local original = engines.find_module_path
-      engines.find_module_path = function(name)
-         if name == "dkjson" then
-            return nil, "module source not found: dkjson"
+      with_find_module_stub(function(original)
+         return function(name)
+            if name == "dkjson" then
+               return nil, "module source not found: dkjson"
+            end
+            return original(name)
          end
-         return original(name)
-      end
+      end, function()
+         local tmpdir, err = love2d._scaffold_project(SORT_BENCH, DEFAULT_TARGETS, "", {})
 
-      local tmpdir, err = love2d._scaffold_project(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {}
-      )
-
-      engines.find_module_path = original
-
-      assert.is_nil(tmpdir)
-      assert.is_string(err)
-      assert.matches("dkjson", err)
+         assert.is_nil(tmpdir)
+         assert.is_string(err)
+         assert.matches("dkjson", err)
+      end)
    end)
 
    -- run() error handling tests
 
    it("run returns nil and error when scaffold fails", function()
-      local engines = require("luabench.engines")
-      local original = engines.find_module_path
-      engines.find_module_path = function()
-         return nil, "module source not found: luamark"
-      end
+      with_find_module_stub(function()
+         return function()
+            return nil, "module source not found: luamark"
+         end
+      end, function()
+         local results, err = love2d.run("/usr/bin/love", SORT_BENCH, DEFAULT_TARGETS, "", {})
 
-      local results, err = love2d.run(
-         "/usr/bin/love",
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {}
-      )
-
-      engines.find_module_path = original
-
-      assert.is_nil(results)
-      assert.is_string(err)
-      assert.matches("luamark", err)
+         assert.is_nil(results)
+         assert.is_string(err)
+         assert.matches("luamark", err)
+      end)
    end)
 
    -- Integration test (conditional)
