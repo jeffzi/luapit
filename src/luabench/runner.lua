@@ -2,6 +2,7 @@ local loader = require("luabench.loader")
 local luamark = require("luamark")
 local path = require("pl.path")
 local Progress = require("luabench.progress")
+local subprocess = require("luabench.subprocess")
 local system = require("system")
 
 local M = {}
@@ -120,7 +121,7 @@ end
 --- Load a benchmark file from each target.
 --- @param bench_file string Absolute path to a benchmark file.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
---- @return {name: string, result: table}[]
+--- @return {name: string, path: string, result: table}[]
 local function load_targets(bench_file, targets)
    local loaded = {}
    for j = 1, #targets do
@@ -131,6 +132,7 @@ local function load_targets(bench_file, targets)
       if result ~= nil then
          loaded[#loaded + 1] = {
             name = target.name,
+            path = target.path,
             result = result,
          }
       else
@@ -187,25 +189,71 @@ function M.run(bench_files, targets, opts)
 
          for si = 1, #spec_names do
             local spec_name = spec_names[si]
-            local funcs = {}
-            for j = 1, #loaded do
-               local entry = loaded[j]
-               if entry.result[spec_name] ~= nil then
-                  funcs[entry.name] = entry.result[spec_name]
-               end
-            end
-            if next(funcs) ~= nil then
-               local bench_id = loader.bench_id(rel_path, spec_name)
-               if matches_filter(bench_id, filters) then
-                  local results = run_single(bench_id, funcs, bar, compare_opts)
-                  pos = pos + 1
-                  bar:update(pos, bench_id)
-                  if results ~= nil then
-                     all_results[#all_results + 1] = {
-                        file = rel_path:gsub("_bench%.lua$", ""),
-                        spec = spec_name == "" and "default" or spec_name,
-                        targets = map_results(results),
-                     }
+            local bench_id = loader.bench_id(rel_path, spec_name)
+            if matches_filter(bench_id, filters) then
+               if opts.runtime then
+                  -- Build target list for this spec (only targets that have this spec)
+                  local spec_targets = {}
+                  for j = 1, #loaded do
+                     if loaded[j].result[spec_name] ~= nil then
+                        spec_targets[#spec_targets + 1] = {
+                           path = loaded[j].path,
+                           name = loaded[j].name,
+                        }
+                     end
+                  end
+                  if #spec_targets > 0 then
+                     if bar then
+                        bar:suspend()
+                     end
+                     io.write(string.format("\n%s %s\n", HEADER_PREFIX, bench_id))
+                     local results, sub_err = subprocess.run_subprocess(
+                        opts.runtime, bench_file, spec_targets, spec_name, compare_opts
+                     )
+                     if results then
+                        io.write(luamark.render(results) .. "\n")
+                        io.flush()
+                        if bar then
+                           bar:resume()
+                        end
+                        pos = pos + 1
+                        bar:update(pos, bench_id)
+                        all_results[#all_results + 1] = {
+                           file = rel_path:gsub("_bench%.lua$", ""),
+                           spec = spec_name == "" and "default" or spec_name,
+                           targets = map_results(results),
+                        }
+                     else
+                        io.stderr:write(string.format(
+                           "luabench: warning: subprocess error in %s: %s\n",
+                           bench_id, tostring(sub_err)
+                        ))
+                        io.flush()
+                        if bar then
+                           bar:resume()
+                        end
+                     end
+                  end
+               else
+                  -- In-process execution path
+                  local funcs = {}
+                  for j = 1, #loaded do
+                     local entry = loaded[j]
+                     if entry.result[spec_name] ~= nil then
+                        funcs[entry.name] = entry.result[spec_name]
+                     end
+                  end
+                  if next(funcs) ~= nil then
+                     local results = run_single(bench_id, funcs, bar, compare_opts)
+                     pos = pos + 1
+                     bar:update(pos, bench_id)
+                     if results ~= nil then
+                        all_results[#all_results + 1] = {
+                           file = rel_path:gsub("_bench%.lua$", ""),
+                           spec = spec_name == "" and "default" or spec_name,
+                           targets = map_results(results),
+                        }
+                     end
                   end
                end
             end

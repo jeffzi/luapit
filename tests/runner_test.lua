@@ -453,13 +453,13 @@ describe("runner", function()
       assert.are_same({ n = { 100 } }, spy_state.compare_calls[1].opts.params)
    end)
 
-   it("run does not forward filters or runtime keys to compare_time", function()
+   it("run does not forward filters key to compare_time", function()
       local spy_state, teardown = setup_run_stubs()
 
       runner.run(
          { SORT_BENCH },
          { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
-         { rounds = 1, filters = { "sort" }, runtime = "/usr/bin/lua" }
+         { rounds = 1, filters = { "sort" } }
       )
 
       teardown()
@@ -484,5 +484,117 @@ describe("runner", function()
       assert.are_equal(1, #spy_state.compare_calls)
       assert.is_table(results)
       assert.are_equal(1, #results)
+   end)
+
+   -- subprocess execution path tests
+
+   it("run with opts.runtime calls subprocess.run_subprocess instead of compare_time", function()
+      local spy_state, teardown = setup_run_stubs()
+      local subprocess = require("luabench.subprocess")
+      local original_run_subprocess = subprocess.run_subprocess
+      local subprocess_calls = {}
+
+      subprocess.run_subprocess = function(runtime_path, bench_file, targets, spec_name, opts)
+         subprocess_calls[#subprocess_calls + 1] = {
+            runtime_path = runtime_path,
+            bench_file = bench_file,
+            targets = targets,
+            spec_name = spec_name,
+            opts = opts,
+         }
+         return {
+            {
+               name = "libv1",
+               median = 0.001,
+               ci_lower = 0.0009,
+               ci_upper = 0.0011,
+               rounds = 1,
+               rank = 1,
+               relative = 1.0,
+            },
+            {
+               name = "libv2",
+               median = 0.002,
+               ci_lower = 0.0019,
+               ci_upper = 0.0021,
+               rounds = 1,
+               rank = 2,
+               relative = 2.0,
+            },
+         }
+      end
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { runtime = "/usr/bin/lua", rounds = 1 }
+      )
+
+      subprocess.run_subprocess = original_run_subprocess
+      teardown()
+
+      -- subprocess path used instead of in-process compare_time
+      assert.are_equal(0, #spy_state.compare_calls)
+      assert.are_equal(1, #subprocess_calls)
+      assert.are_equal("/usr/bin/lua", subprocess_calls[1].runtime_path)
+      assert.is_table(subprocess_calls[1].targets)
+      assert.are_equal(2, #subprocess_calls[1].targets)
+      assert.is_table(results)
+      assert.are_equal(1, #results)
+   end)
+
+   it("run with opts.runtime receives spec_targets with path and name", function()
+      local _, teardown = setup_run_stubs()
+      local subprocess = require("luabench.subprocess")
+      local original_run_subprocess = subprocess.run_subprocess
+      local captured_targets
+
+      subprocess.run_subprocess = function(_, _, targets)
+         captured_targets = targets
+         return {
+            {
+               name = "libv1", median = 0.001, ci_lower = 0.0009,
+               ci_upper = 0.0011, rounds = 1, rank = 1, relative = 1.0,
+            },
+         }
+      end
+
+      runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { runtime = "/usr/bin/lua" }
+      )
+
+      subprocess.run_subprocess = original_run_subprocess
+      teardown()
+
+      assert.is_table(captured_targets)
+      assert.are_equal(LIBV1_DIR, captured_targets[1].path)
+      assert.are_equal("libv1", captured_targets[1].name)
+      assert.are_equal(LIBV2_DIR, captured_targets[2].path)
+      assert.are_equal("libv2", captured_targets[2].name)
+   end)
+
+   it("run with opts.runtime handles subprocess error gracefully", function()
+      local _, teardown = setup_run_stubs()
+      local subprocess = require("luabench.subprocess")
+      local original_run_subprocess = subprocess.run_subprocess
+
+      subprocess.run_subprocess = function()
+         return nil, "subprocess failed"
+      end
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { runtime = "/usr/bin/lua" }
+      )
+
+      local stderr_output = read_stderr()
+      subprocess.run_subprocess = original_run_subprocess
+      teardown()
+
+      assert.are_same({}, results)
+      assert.matches("subprocess error", stderr_output)
    end)
 end)

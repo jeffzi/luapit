@@ -3,6 +3,7 @@ local discover = require("luabench.discover")
 local export = require("luabench.export")
 local resolve = require("luabench.resolve")
 local runner = require("luabench.runner")
+local subprocess = require("luabench.subprocess")
 
 local M = {}
 
@@ -101,6 +102,17 @@ function M.main(argv)
             os.exit(1)
          end
          opts.params = params
+      end
+
+      -- Resolve runtime if -R specified (fail fast per D-09)
+      if args.runtime then
+         local runtime_path, runtime_err = subprocess.resolve_runtime(args.runtime)
+         if runtime_path == nil then
+            resolve.cleanup(targets)
+            io.stderr:write("luabench: " .. runtime_err .. "\n")
+            os.exit(1)
+         end
+         opts.runtime = runtime_path
       end
 
       -- Run benchmarks then cleanup (cleanup always runs per D-14)

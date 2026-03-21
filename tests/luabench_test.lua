@@ -664,6 +664,120 @@ describe("luabench", function()
       assert.is_nil(s.state.write_json_called_with)
    end)
 
+   -- -R runtime selection tests
+
+   it("main with -R calls subprocess.resolve_runtime and sets opts.runtime", function()
+      local s = setup_main_stubs()
+      local subprocess_mod = require("luabench.subprocess")
+      local original_resolve = subprocess_mod.resolve_runtime
+
+      subprocess_mod.resolve_runtime = function(name)
+         return "/usr/local/bin/" .. name
+      end
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "-R", "luajit" })
+
+      subprocess_mod.resolve_runtime = original_resolve
+      s.teardown()
+
+      assert.are_equal("/usr/local/bin/luajit", s.state.run_called_with.opts.runtime)
+   end)
+
+   it("main with -R and invalid runtime exits 1 with error", function()
+      local s = setup_main_stubs()
+      local subprocess_mod = require("luabench.subprocess")
+      local original_resolve = subprocess_mod.resolve_runtime
+
+      subprocess_mod.resolve_runtime = function()
+         return nil, "runtime not found: \"bad_runtime\""
+      end
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      os.exit = function(code) -- luacheck: ignore 122
+         s.state.exit_code = code
+         error("EXIT")
+      end
+
+      pcall(luabench.main, { "ref", ".#main", "-R", "bad_runtime" })
+
+      local stderr_output = s.read_stderr()
+      subprocess_mod.resolve_runtime = original_resolve
+      s.teardown()
+
+      assert.are_equal(1, s.state.exit_code)
+      assert.matches("runtime not found", stderr_output)
+   end)
+
+   it("main without -R does not set opts.runtime", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main" })
+
+      s.teardown()
+
+      assert.is_nil(s.state.run_called_with.opts.runtime)
+   end)
+
+   it("main with -R -t combines runtime and test mode", function()
+      local s = setup_main_stubs()
+      local subprocess_mod = require("luabench.subprocess")
+      local original_resolve = subprocess_mod.resolve_runtime
+
+      subprocess_mod.resolve_runtime = function(name)
+         return "/usr/bin/" .. name
+      end
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "-R", "luajit", "-t" })
+
+      subprocess_mod.resolve_runtime = original_resolve
+      s.teardown()
+
+      assert.are_equal("/usr/bin/luajit", s.state.run_called_with.opts.runtime)
+      assert.are_equal(1, s.state.run_called_with.opts.rounds)
+   end)
+
    it("main does not call export.write_json when runner errors", function()
       local s = setup_main_stubs()
 
