@@ -40,8 +40,10 @@ build = {
    modules = {
       luabench = "src/luabench/init.lua",
       ["luabench.discover"] = "src/luabench/discover.lua",
+      ["luabench.export"] = "src/luabench/export.lua",
       ["luabench.loader"] = "src/luabench/loader.lua",
       ["luabench.resolve"] = "src/luabench/resolve.lua",
+      ["luabench.progress"] = "src/luabench/progress.lua",
       ["luabench.runner"] = "src/luabench/runner.lua",
    },
    install = {
