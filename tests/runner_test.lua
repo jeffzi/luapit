@@ -79,7 +79,26 @@ describe("runner", function()
 
       luamark.compare_time = function(funcs)
          spy_state.compare_calls[#spy_state.compare_calls + 1] = funcs
-         return {}
+         return {
+            {
+               name = "libv1",
+               median = 0.001,
+               ci_lower = 0.0009,
+               ci_upper = 0.0011,
+               rounds = 100,
+               rank = 1,
+               relative = 1.0,
+            },
+            {
+               name = "libv2",
+               median = 0.002,
+               ci_lower = 0.0019,
+               ci_upper = 0.0021,
+               rounds = 100,
+               rank = 2,
+               relative = 2.0,
+            },
+         }
       end
       luamark.render = function()
          return "rendered"
@@ -110,7 +129,7 @@ describe("runner", function()
    it("run calls compare_time with target specs and renders output with header", function()
       local spy_state, teardown = setup_run_stubs()
 
-      runner.run(
+      local results = runner.run(
          { SORT_BENCH },
          { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
       )
@@ -122,8 +141,12 @@ describe("runner", function()
       assert.is_not_nil(compare_args["libv1"])
       assert.is_not_nil(compare_args["libv2"])
       local combined = table.concat(spy_state.output)
+      local header_prefix = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
+      assert.matches(header_prefix, combined)
       assert.matches("sort", combined)
       assert.matches("rendered", combined)
+      assert.is_not_nil(results)
+      assert.is_table(results)
    end)
 
    it("run skips benchmark when load_benchmark returns nil for all targets", function()
@@ -208,7 +231,17 @@ describe("runner", function()
          if call_count == 1 then
             error("compare failed")
          end
-         return {}
+         return {
+            {
+               name = "libv1",
+               median = 0.001,
+               ci_lower = 0.0009,
+               ci_upper = 0.0011,
+               rounds = 100,
+               rank = 1,
+               relative = 1.0,
+            },
+         }
       end
 
       runner.run(
@@ -220,5 +253,61 @@ describe("runner", function()
       teardown()
 
       assert.matches("warning", stderr_output)
+   end)
+
+   it("run returns flat results array with file, spec, and targets fields", function()
+      local _, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      assert.is_table(results)
+      assert.are_equal(1, #results)
+      local entry = results[1]
+      assert.is_string(entry.file)
+      assert.matches("sort", entry.file)
+      assert.is_string(entry.spec)
+      assert.is_table(entry.targets)
+      assert.are_equal(2, #entry.targets)
+   end)
+
+   it("run maps luamark Result fields to stat entries with ratio field", function()
+      local _, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      local stat = results[1].targets[1]
+      assert.is_string(stat.name)
+      assert.is_number(stat.median)
+      assert.is_number(stat.ci_lower)
+      assert.is_number(stat.ci_upper)
+      assert.is_number(stat.rounds)
+      assert.is_number(stat.rank)
+      assert.is_number(stat.ratio)
+      assert.are_equal(1.0, stat.ratio)
+      local stat2 = results[1].targets[2]
+      assert.are_equal(2.0, stat2.ratio)
+   end)
+
+   it("run maps empty spec name to default in returned results", function()
+      local _, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      teardown()
+
+      assert.are_equal("default", results[1].spec)
    end)
 end)

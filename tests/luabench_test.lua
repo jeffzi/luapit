@@ -189,7 +189,7 @@ describe("luabench", function()
       s.discover_mod.discover = function()
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() end
+      s.runner_mod.run = function() return {} end
 
       luabench.main({ "ref", ".#main", ".#dev" })
 
@@ -213,7 +213,7 @@ describe("luabench", function()
       s.discover_mod.discover = function()
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() end
+      s.runner_mod.run = function() return {} end
 
       luabench.main({ "ref", ".#main" })
 
@@ -266,7 +266,7 @@ describe("luabench", function()
          s.state.discover_called_with = paths
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() end
+      s.runner_mod.run = function() return {} end
 
       luabench.main({ "ref", ".#main" })
 
@@ -288,7 +288,7 @@ describe("luabench", function()
          s.state.discover_called_with = paths
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() end
+      s.runner_mod.run = function() return {} end
 
       luabench.main({ "ref", ".#main", "-b", "benchmarks/", "-b", "tests/" })
 
@@ -364,6 +364,7 @@ describe("luabench", function()
       end
       s.runner_mod.run = function(files, targets)
          s.state.run_called_with = { files = files, targets = targets }
+         return {}
       end
 
       luabench.main({ "ref", ".#main", ".#dev" })
