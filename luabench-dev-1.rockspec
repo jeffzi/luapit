@@ -50,10 +50,12 @@ build = {
       ["luabench.engines"] = "src/luabench/engines/init.lua",
       ["luabench.engines.love2d"] = "src/luabench/engines/love2d.lua",
       ["luabench.engines.defold"] = "src/luabench/engines/defold.lua",
+      ["luabench.engines.defold_html5"] = "src/luabench/engines/defold_html5.lua",
    },
    install = {
       bin = {
          luabench = "bin/luabench",
+         ["luabench-html5-harness"] = "src/luabench/engines/defold_html5_harness.mjs",
       },
    },
 }

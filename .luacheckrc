@@ -1,6 +1,6 @@
 std = "min"
 include_files = { "src", "tests" }
-exclude_files = { "tests/fixtures/syntax_error_bench.lua", "tests/engines/*.sh" }
+exclude_files = { "tests/fixtures/syntax_error_bench.lua", "tests/engines/*.sh", "src/**/*.mjs" }
 globals = {
    "_G",
    "jit", -- LuaJIT

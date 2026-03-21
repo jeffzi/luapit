@@ -4,11 +4,14 @@ local quote_arg = utils.quote_arg
 
 local M = {}
 
---- Map engine names to adapter module paths (loaded lazily).
---- @type table<string, string>
+--- Engine registry: maps engine name to adapter module path and optional
+--- runtime command override (when the binary to resolve differs from the
+--- engine name itself).
+--- @type table<string, {module: string, runtime_cmd: string|nil}>
 local ENGINES = {
-   love = "luabench.engines.love2d",
-   defold = "luabench.engines.defold",
+   love = { module = "luabench.engines.love2d" },
+   defold = { module = "luabench.engines.defold", runtime_cmd = "dmengine_headless" },
+   ["defold-html5"] = { module = "luabench.engines.defold_html5", runtime_cmd = "node" },
 }
 
 --- Check if a runtime name or path matches a known engine adapter.
@@ -27,7 +30,16 @@ end
 --- @param engine_name string Engine name returned by detect().
 --- @return table adapter Engine adapter module with run() function.
 function M.get_adapter(engine_name)
-   return require(ENGINES[engine_name])
+   return require(ENGINES[engine_name].module)
+end
+
+--- Return the command name to resolve for a given engine.
+--- Some engines need a different binary than their own name
+--- (e.g. defold resolves "dmengine_headless", defold-html5 resolves "node").
+--- @param engine_name string Engine name returned by detect().
+--- @return string resolve_name Command name to pass to subprocess.resolve_runtime.
+function M.runtime_cmd(engine_name)
+   return ENGINES[engine_name].runtime_cmd or engine_name
 end
 
 --- Copy a file from src to dst using binary-safe read/write.
@@ -70,15 +82,14 @@ function M.find_command(cmd)
    end
 end
 
---- Append the shared benchmark-loading, opts-building, and result-writing
+--- Append the shared benchmark-loading, opts-building, and compare_time call
 --- lines used by all engine wrapper scripts.
 --- @param parts string[] Code-line accumulator (mutated in place).
 --- @param bench_file string Absolute path to benchmark file.
 --- @param targets {path: string, name: string}[] Target directories.
 --- @param spec_name string Spec name to extract ("" for single-spec).
 --- @param opts table Options for compare_time (rounds, params).
---- @param result_path string Absolute path to write JSON results.
-function M.append_wrapper_body(parts, bench_file, targets, spec_name, opts, result_path)
+function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
    -- Build targets table literal
    parts[#parts + 1] = "      local targets = {"
    for i = 1, #targets do
@@ -138,8 +149,22 @@ function M.append_wrapper_body(parts, bench_file, targets, spec_name, opts, resu
    end
    parts[#parts + 1] = ""
 
-   -- Call compare_time and write results
+   -- Call compare_time
    parts[#parts + 1] = "      local results = luamark.compare_time(funcs, opts)"
+end
+
+--- Append the shared benchmark-loading, opts-building, and result-writing
+--- lines used by all engine wrapper scripts.
+--- @param parts string[] Code-line accumulator (mutated in place).
+--- @param bench_file string Absolute path to benchmark file.
+--- @param targets {path: string, name: string}[] Target directories.
+--- @param spec_name string Spec name to extract ("" for single-spec).
+--- @param opts table Options for compare_time (rounds, params).
+--- @param result_path string Absolute path to write JSON results.
+function M.append_wrapper_body(parts, bench_file, targets, spec_name, opts, result_path)
+   M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
+
+   -- Write results to file
    parts[#parts + 1] = string.format("      local f = io.open(%q, 'w')", result_path)
    parts[#parts + 1] = "      if not f then error('cannot open ' .. "
       .. string.format("%q", result_path)

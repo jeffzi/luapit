@@ -136,6 +136,7 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    end
    ok, err = dir.makepath(tmpdir .. "/main")
    if not ok then
+      dir.rmtree(tmpdir)
       return nil, "failed to create main dir: " .. tostring(err)
    end
 
@@ -152,18 +153,22 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
 
    ok, err = write_file(tmpdir .. "/game.project", GAME_PROJECT)
    if not ok then
+      dir.rmtree(tmpdir)
       return nil, err
    end
    ok, err = write_file(tmpdir .. "/input/game.input_binding", INPUT_BINDING)
    if not ok then
+      dir.rmtree(tmpdir)
       return nil, err
    end
    ok, err = write_file(tmpdir .. "/main/main.collection", MAIN_COLLECTION)
    if not ok then
+      dir.rmtree(tmpdir)
       return nil, err
    end
    ok, err = write_file(tmpdir .. "/main/test.go", TEST_GO)
    if not ok then
+      dir.rmtree(tmpdir)
       return nil, err
    end
 

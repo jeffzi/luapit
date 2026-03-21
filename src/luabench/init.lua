@@ -108,8 +108,8 @@ function M.main(argv)
       if args.runtime then
          local engine_name = engines.detect(args.runtime)
          local resolve_name = args.runtime
-         if engine_name == "defold" then
-            resolve_name = "dmengine_headless"
+         if engine_name then
+            resolve_name = engines.runtime_cmd(engine_name)
          end
          local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
          if runtime_path == nil then

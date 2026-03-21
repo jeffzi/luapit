@@ -4,8 +4,13 @@ on: [push, pull_request]
 
 jobs:
   defold:
-    name: desktop
+    name: ${{ matrix.platform }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x86_64-linux, js-web]
 
     steps:
       - name: Checkout
@@ -41,6 +46,24 @@ jobs:
           luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
           luarocks make
 
-      - name: Run Defold integration test
+      - name: Setup Node.js
+        if: matrix.platform == 'js-web'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        if: matrix.platform == 'js-web'
+        run: |
+          npm install playwright
+          npx playwright install chromium
+
+      - name: Run Defold desktop integration test
+        if: matrix.platform == 'x86_64-linux'
         timeout-minutes: 10
         run: luabench ref . -R defold -b tests/engines/fixtures/ -t
+
+      - name: Run Defold HTML5 integration test
+        if: matrix.platform == 'js-web'
+        timeout-minutes: 10
+        run: luabench ref . -R defold-html5 -b tests/engines/fixtures/ -t

@@ -5,6 +5,10 @@ local path = require("pl.path")
 
 local defold
 
+local CWD = path.currentdir()
+local FIXTURE_DIR = CWD .. "/tests/engines/fixtures"
+local TRIVIAL_BENCH = FIXTURE_DIR .. "/trivial_bench.lua"
+
 --- Generate a wrapper with default arguments, allowing selective overrides.
 --- @param overrides? {bench_file?: string, targets?: table, spec_name?: string, opts?: table, result_path?: string}
 --- @return string wrapper
@@ -17,6 +21,24 @@ local function make_wrapper(overrides)
       o.opts or {},
       o.result_path or "/tmp/result.json"
    )
+end
+
+--- Check that a command exists in PATH; call pending() and return false if absent.
+--- @param cmd string Command name to look up.
+--- @param msg string Pending message if not found.
+--- @return string|false
+local function require_command(cmd, msg)
+   local h = io.popen("command -v " .. cmd .. " 2>/dev/null")
+   local result = ""
+   if h then
+      result = h:read("*a"):match("^(.-)%s*$") or ""
+      h:close()
+   end
+   if result == "" then
+      pending(msg)
+      return false
+   end
+   return result
 end
 
 describe("engines.defold", function()
@@ -169,16 +191,7 @@ describe("engines.defold", function()
 
    -- check_java
    it("check_java succeeds when java is available", function()
-      -- Check if java is available
-      local h = io.popen("command -v java 2>/dev/null")
-      local java_path = ""
-      if h then
-         java_path = h:read("*a"):match("^(.-)%s*$") or ""
-         h:close()
-      end
-
-      if not java_path or java_path == "" then
-         pending("java not found in PATH")
+      if not require_command("java", "java not found in PATH") then
          return
       end
 
@@ -213,67 +226,32 @@ describe("engines.defold", function()
 
    -- Integration test (conditional)
    it("run executes a trivial benchmark with dmengine_headless and bob.jar", function()
-      -- Check for dmengine_headless
-      local h1 = io.popen("command -v dmengine_headless 2>/dev/null")
-      local dmengine = ""
-      if h1 then
-         dmengine = h1:read("*a"):match("^(.-)%s*$") or ""
-         h1:close()
-      end
-
-      if not dmengine or dmengine == "" then
-         pending("dmengine_headless not found in PATH")
+      local dmengine = require_command("dmengine_headless", "dmengine_headless not found in PATH")
+      if not dmengine then
          return
       end
 
-      -- Check for bob.jar
-      local bob = os.getenv("BOB")
+      if not require_command("java", "java not found in PATH") then
+         return
+      end
+
+      local bob = os.getenv("BOB") --luacheck: ignore 311
       if not bob or bob == "" then
-         local h2 = io.popen("command -v bob.jar 2>/dev/null")
-         if h2 then
-            bob = h2:read("*a"):match("^(.-)%s*$") or ""
-            h2:close()
+         local found =
+            require_command("bob.jar", "bob.jar not found (set BOB env var or add to PATH)")
+         if not found then
+            return
          end
+         bob = found --luacheck: ignore 311
       end
-      if not bob or bob == "" then
-         pending("bob.jar not found (set BOB env var or add to PATH)")
-         return
-      end
-
-      -- Check for java
-      local h3 = io.popen("command -v java 2>/dev/null")
-      local java = ""
-      if h3 then
-         java = h3:read("*a"):match("^(.-)%s*$") or ""
-         h3:close()
-      end
-      if not java or java == "" then
-         pending("java not found in PATH")
-         return
-      end
-
-      -- Create a trivial benchmark file
-      local bench_path = os.tmpname() .. "_bench.lua"
-      local bf = io.open(bench_path, "w")
-      bf:write([[
-return {
-   fn = function()
-      local sum = 0
-      for i = 1, 100 do sum = sum + i end
-   end,
-}
-]])
-      bf:close()
 
       local results, err = defold.run(
          dmengine,
-         bench_path,
-         { { path = path.dirname(bench_path), name = "test" } },
+         TRIVIAL_BENCH,
+         { { path = FIXTURE_DIR, name = "test" } },
          "",
          { rounds = 3 }
       )
-
-      pcall(os.remove, bench_path)
 
       assert.is_nil(err)
       assert.is_table(results)
