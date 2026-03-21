@@ -1,4 +1,5 @@
 local json = require("dkjson")
+local utils = require("pl.utils")
 
 local M = {}
 
@@ -31,12 +32,10 @@ function M.write_json(filepath, results, targets, version)
       keyorder = { "version", "timestamp", "targets", "results" },
    })
 
-   local f, err = io.open(filepath, "w")
-   if f == nil then
+   local ok, err = utils.writefile(filepath, encoded)
+   if not ok then
       return nil, err
    end
-   f:write(encoded)
-   f:close()
 
    return true
 end

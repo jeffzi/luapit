@@ -1,3 +1,6 @@
+local chronos = require("chronos")
+require("terminal")
+
 describe("progress", function()
    local Progress
 
@@ -54,7 +57,6 @@ describe("progress", function()
    end)
 
    it("_compute_eta returns formatted duration for partial progress", function()
-      local chronos = require("chronos")
       local bar = Progress({ total = 10, disable = true })
       bar.pos = 5
       bar.start_time = chronos.nanotime() - 10
@@ -70,18 +72,18 @@ describe("progress", function()
 
       -- Test via _format with known elapsed values
       -- 45 seconds
-      bar.start_time = require("chronos").nanotime() - 45
+      bar.start_time = chronos.nanotime() - 45
       bar.pos = 100
       local formatted = bar:_format("{elapsed}")
       assert.matches("%d+s", formatted)
 
       -- 120 seconds = 2.0m
-      bar.start_time = require("chronos").nanotime() - 120
+      bar.start_time = chronos.nanotime() - 120
       formatted = bar:_format("{elapsed}")
       assert.matches("%d+%.%d+m", formatted)
 
       -- 7200 seconds = 2.0h
-      bar.start_time = require("chronos").nanotime() - 7200
+      bar.start_time = chronos.nanotime() - 7200
       formatted = bar:_format("{elapsed}")
       assert.matches("%d+%.%d+h", formatted)
    end)
@@ -101,28 +103,12 @@ describe("progress", function()
    it("when disable is true, start update stop suspend resume are no-ops", function()
       local bar = Progress({ total = 10, disable = true })
 
-      -- These should not error and should not write to terminal
       assert.has_no_error(function()
          bar:start()
-      end)
-      assert.has_no_error(function()
          bar:update(1, "test")
-      end)
-      assert.has_no_error(function()
          bar:suspend()
-      end)
-      assert.has_no_error(function()
          bar:resume()
-      end)
-      assert.has_no_error(function()
          bar:stop()
       end)
-   end)
-
-   it("suspend and resume methods exist on ProgressBar instances", function()
-      local bar = Progress({ total = 10, disable = true })
-
-      assert.is_function(bar.suspend)
-      assert.is_function(bar.resume)
    end)
 end)

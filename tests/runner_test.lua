@@ -1,5 +1,7 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field
+
 local lfs = require("lfs")
+require("terminal")
 
 describe("runner", function()
    local runner
@@ -553,8 +555,13 @@ describe("runner", function()
          captured_targets = targets
          return {
             {
-               name = "libv1", median = 0.001, ci_lower = 0.0009,
-               ci_upper = 0.0011, rounds = 1, rank = 1, relative = 1.0,
+               name = "libv1",
+               median = 0.001,
+               ci_lower = 0.0009,
+               ci_upper = 0.0011,
+               rounds = 1,
+               rank = 1,
+               relative = 1.0,
             },
          }
       end
@@ -596,5 +603,48 @@ describe("runner", function()
 
       assert.are_same({}, results)
       assert.matches("subprocess error", stderr_output)
+   end)
+
+   -- progress bar total bug
+
+   it("run sets progress bar total to number of spec executions not files times targets", function()
+      local _, teardown = setup_run_stubs()
+      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+
+      -- Stub the Progress constructor to capture the total option
+      local original_progress = package.loaded["luabench.progress"]
+      local captured_total
+      local noop = function() end
+
+      package.loaded["luabench.progress"] = function(opts)
+         captured_total = opts.total
+         return {
+            start = noop,
+            update = noop,
+            stop = noop,
+            suspend = noop,
+            resume = noop,
+         }
+      end
+
+      -- Reload runner so it picks up the stubbed progress module
+      package.loaded["luabench.runner"] = nil
+      local fresh_runner = require("luabench.runner")
+
+      fresh_runner.run(
+         { SORT_BENCH, multi_bench },
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+      )
+
+      -- Restore the original progress module and runner
+      package.loaded["luabench.progress"] = original_progress
+      package.loaded["luabench.runner"] = nil
+      runner = require("luabench.runner")
+      teardown()
+
+      -- sort_bench has 1 spec, multi_bench has 2 specs = 3 total spec executions
+      -- Bug: current code sets total = #bench_files * #targets = 2 * 2 = 4
+      -- Correct: total should be 3 (actual number of spec executions)
+      assert.are_equal(3, captured_total)
    end)
 end)

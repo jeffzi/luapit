@@ -1,7 +1,7 @@
+local Progress = require("luabench.progress")
 local loader = require("luabench.loader")
 local luamark = require("luamark")
 local path = require("pl.path")
-local Progress = require("luabench.progress")
 local subprocess = require("luabench.subprocess")
 local system = require("system")
 
@@ -88,33 +88,27 @@ end
 
 local HEADER_PREFIX = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
 
---- Run a single-Spec benchmark across targets.
+--- Run a benchmark with bar suspend/resume and output rendering.
 --- @param id string Benchmark identity string.
---- @param funcs table<string, table> Map of target_name -> Spec.
---- @param bar ProgressBar|nil Progress bar instance for suspend/resume around output.
---- @param opts table|nil Options to forward to luamark.compare_time.
---- @return table[]|nil results Raw luamark compare_time results, or nil on error.
-local function run_single(id, funcs, bar, opts)
-   if bar then
-      bar:suspend()
-   end
+--- @param bar ProgressBar Progress bar instance.
+--- @param run_fn fun(): table[]|nil, string|nil Function that returns results or nil+err.
+--- @param err_label string Label for error messages (e.g. "benchmark error", "subprocess error").
+--- @return table[]|nil results Raw luamark results, or nil on error.
+local function run_with_output(id, bar, run_fn, err_label)
+   bar:suspend()
    io.write(string.format("\n%s %s\n", HEADER_PREFIX, id))
-   local ok, results = pcall(luamark.compare_time, funcs, opts)
-   if not ok then
+   local results, err = run_fn()
+   if not results then
       io.stderr:write(
-         string.format("luabench: warning: benchmark error in %s: %s\n", id, tostring(results))
+         string.format("luabench: warning: %s in %s: %s\n", err_label, id, tostring(err))
       )
       io.flush()
-      if bar then
-         bar:resume()
-      end
+      bar:resume()
       return nil
    end
    io.write(luamark.render(results) .. "\n")
    io.flush()
-   if bar then
-      bar:resume()
-   end
+   bar:resume()
    return results
 end
 
@@ -144,6 +138,37 @@ local function load_targets(bench_file, targets)
    return loaded
 end
 
+--- Collect unique, sorted spec names across all loaded targets.
+--- @param loaded {result: table}[] Loaded target entries.
+--- @return string[] spec_names Sorted unique spec names.
+local function collect_spec_names(loaded)
+   local names = {}
+   local seen = {}
+   for j = 1, #loaded do
+      for name in pairs(loaded[j].result) do
+         if not seen[name] then
+            seen[name] = true
+            names[#names + 1] = name
+         end
+      end
+   end
+   table.sort(names)
+   return names
+end
+
+--- Build a result entry for the output array.
+--- @param rel_path string Relative benchmark file path.
+--- @param spec_name string Spec name ("" for single-spec).
+--- @param results table[] Raw luamark results.
+--- @return table entry Result entry with file, spec, and targets.
+local function make_result_entry(rel_path, spec_name, results)
+   return {
+      file = rel_path:gsub("_bench%.lua$", ""),
+      spec = spec_name == "" and "default" or spec_name,
+      targets = map_results(results),
+   }
+end
+
 --- Run benchmarks across targets.
 --- @param bench_files string[] Absolute paths to benchmark files.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
@@ -160,7 +185,30 @@ function M.run(bench_files, targets, opts)
    end
 
    local all_results = {}
-   local total = #bench_files * #targets
+
+   -- Pre-scan: load all bench files and count filtered spec executions.
+   local file_info = {}
+   local total = 0
+   for i = 1, #bench_files do
+      local bench_file = bench_files[i]
+      local rel_path = path.relpath(bench_file)
+      local loaded = load_targets(bench_file, targets)
+      local spec_names = {}
+      if #loaded > 0 then
+         local all_names = collect_spec_names(loaded)
+         for si = 1, #all_names do
+            local name = all_names[si]
+            local bench_id = loader.bench_id(rel_path, name)
+            if matches_filter(bench_id, filters) then
+               spec_names[#spec_names + 1] = name
+            end
+         end
+         total = total + #spec_names
+      end
+      file_info[i] =
+         { bench_file = bench_file, rel_path = rel_path, loaded = loaded, spec_names = spec_names }
+   end
+
    local bar = Progress({
       total = total,
       template = "{bar} {pos}/{len} {msg} [{elapsed}<{eta}]",
@@ -169,91 +217,64 @@ function M.run(bench_files, targets, opts)
    bar:start()
    local pos = 0
 
-   for i = 1, #bench_files do
-      local bench_file = bench_files[i]
-      local rel_path = path.relpath(bench_file)
-      local loaded = load_targets(bench_file, targets)
+   for i = 1, #file_info do
+      local info = file_info[i]
+      local rel_path = info.rel_path
+      local loaded = info.loaded
+      local spec_names = info.spec_names
 
       if #loaded > 0 then
-         local spec_names = {}
-         local seen = {}
-         for j = 1, #loaded do
-            for name in pairs(loaded[j].result) do
-               if seen[name] == nil then
-                  seen[name] = true
-                  spec_names[#spec_names + 1] = name
-               end
-            end
-         end
-         table.sort(spec_names)
-
          for si = 1, #spec_names do
             local spec_name = spec_names[si]
             local bench_id = loader.bench_id(rel_path, spec_name)
-            if matches_filter(bench_id, filters) then
-               if opts.runtime then
-                  -- Build target list for this spec (only targets that have this spec)
-                  local spec_targets = {}
-                  for j = 1, #loaded do
-                     if loaded[j].result[spec_name] ~= nil then
-                        spec_targets[#spec_targets + 1] = {
-                           path = loaded[j].path,
-                           name = loaded[j].name,
-                        }
-                     end
+            if opts.runtime then
+               -- Subprocess execution path
+               local spec_targets = {}
+               for j = 1, #loaded do
+                  if loaded[j].result[spec_name] ~= nil then
+                     spec_targets[#spec_targets + 1] = {
+                        path = loaded[j].path,
+                        name = loaded[j].name,
+                     }
                   end
-                  if #spec_targets > 0 then
-                     if bar then
-                        bar:suspend()
-                     end
-                     io.write(string.format("\n%s %s\n", HEADER_PREFIX, bench_id))
-                     local results, sub_err = subprocess.run_subprocess(
-                        opts.runtime, bench_file, spec_targets, spec_name, compare_opts
+               end
+               if #spec_targets > 0 then
+                  local results = run_with_output(bench_id, bar, function()
+                     return subprocess.run_subprocess(
+                        opts.runtime,
+                        info.bench_file,
+                        spec_targets,
+                        spec_name,
+                        compare_opts
                      )
-                     if results then
-                        io.write(luamark.render(results) .. "\n")
-                        io.flush()
-                        if bar then
-                           bar:resume()
-                        end
-                        pos = pos + 1
-                        bar:update(pos, bench_id)
-                        all_results[#all_results + 1] = {
-                           file = rel_path:gsub("_bench%.lua$", ""),
-                           spec = spec_name == "" and "default" or spec_name,
-                           targets = map_results(results),
-                        }
-                     else
-                        io.stderr:write(string.format(
-                           "luabench: warning: subprocess error in %s: %s\n",
-                           bench_id, tostring(sub_err)
-                        ))
-                        io.flush()
-                        if bar then
-                           bar:resume()
-                        end
-                     end
+                  end, "subprocess error")
+                  pos = pos + 1
+                  bar:update(pos, bench_id)
+                  if results then
+                     all_results[#all_results + 1] = make_result_entry(rel_path, spec_name, results)
                   end
-               else
-                  -- In-process execution path
-                  local funcs = {}
-                  for j = 1, #loaded do
-                     local entry = loaded[j]
-                     if entry.result[spec_name] ~= nil then
-                        funcs[entry.name] = entry.result[spec_name]
-                     end
+               end
+            else
+               -- In-process execution path
+               local funcs = {}
+               for j = 1, #loaded do
+                  local entry = loaded[j]
+                  if entry.result[spec_name] ~= nil then
+                     funcs[entry.name] = entry.result[spec_name]
                   end
-                  if next(funcs) ~= nil then
-                     local results = run_single(bench_id, funcs, bar, compare_opts)
-                     pos = pos + 1
-                     bar:update(pos, bench_id)
-                     if results ~= nil then
-                        all_results[#all_results + 1] = {
-                           file = rel_path:gsub("_bench%.lua$", ""),
-                           spec = spec_name == "" and "default" or spec_name,
-                           targets = map_results(results),
-                        }
+               end
+               if next(funcs) ~= nil then
+                  local results = run_with_output(bench_id, bar, function()
+                     local ok, res = pcall(luamark.compare_time, funcs, compare_opts)
+                     if not ok then
+                        return nil, res
                      end
+                     return res
+                  end, "benchmark error")
+                  pos = pos + 1
+                  bar:update(pos, bench_id)
+                  if results then
+                     all_results[#all_results + 1] = make_result_entry(rel_path, spec_name, results)
                   end
                end
             end

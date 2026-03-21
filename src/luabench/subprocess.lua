@@ -1,24 +1,8 @@
+local utils = require("pl.utils")
+
 local M = {}
 
---- Wrap value in single quotes for POSIX-safe shell quoting,
---- escaping any embedded single quotes.
---- @param s string Value to quote for shell interpolation.
---- @return string quoted Shell-safe quoted string.
-local function shellquote(s)
-   return "'" .. s:gsub("'", "'\\''") .. "'"
-end
-
---- Execute a shell command and return whether it succeeded.
---- Compatible with Lua 5.1, 5.2, 5.3, 5.4, and LuaJIT.
---- @param cmd string Shell command to execute.
---- @return boolean ok True if command exited with code 0.
-local function exec_ok(cmd)
-   local r1, r2 = os.execute(cmd)
-   if r2 ~= nil then
-      return r1 == true
-   end
-   return r1 == 0
-end
+local quote_arg = utils.quote_arg
 
 --- Resolve a runtime name or path to an absolute path.
 --- @param name_or_path string Runtime name (e.g. "luajit") or path (e.g. "/usr/bin/lua").
@@ -28,7 +12,7 @@ local function resolve_runtime(name_or_path)
    if not name_or_path or name_or_path == "" then
       return nil, "runtime not specified"
    end
-   local cmd = "command -v " .. shellquote(name_or_path) .. " 2>/dev/null"
+   local cmd = "command -v " .. quote_arg(name_or_path) .. " 2>/dev/null"
    local h = io.popen(cmd)
    if not h then
       return nil, "failed to check runtime: " .. name_or_path
@@ -38,10 +22,7 @@ local function resolve_runtime(name_or_path)
    result = result:match("^(.-)%s*$")
    if not result or result == "" then
       return nil,
-         string.format(
-            "runtime not found: %q (not in PATH and not a valid path)",
-            name_or_path
-         )
+         string.format("runtime not found: %q (not in PATH and not a valid path)", name_or_path)
    end
    return result
 end
@@ -66,11 +47,8 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
    -- Build targets table literal
    parts[#parts + 1] = "local targets = {"
    for i = 1, #targets do
-      parts[#parts + 1] = string.format(
-         "   { path = %q, name = %q },",
-         targets[i].path,
-         targets[i].name
-      )
+      parts[#parts + 1] =
+         string.format("   { path = %q, name = %q },", targets[i].path, targets[i].name)
    end
    parts[#parts + 1] = "}"
    parts[#parts + 1] = ""
@@ -82,7 +60,8 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
    parts[#parts + 1] = "   local original_path = package.path"
    parts[#parts + 1] = "   local snap = {}"
    parts[#parts + 1] = "   for k in pairs(package.loaded) do snap[k] = true end"
-   parts[#parts + 1] = '   package.path = t.path .. "/?.lua;" .. t.path .. "/?/init.lua;" .. original_path'
+   parts[#parts + 1] =
+      '   package.path = t.path .. "/?.lua;" .. t.path .. "/?/init.lua;" .. original_path'
    parts[#parts + 1] = string.format("   local bench = dofile(%q)", bench_file)
    parts[#parts + 1] = "   if bench.fn ~= nil then bench = { [''] = bench } end"
    parts[#parts + 1] = string.format("   local spec = bench[%q]", spec_name)
@@ -101,21 +80,23 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
    end
    if opts.params then
       parts[#parts + 1] = "opts.params = {"
-      for name, values in pairs(opts.params) do
+      local param_names = {}
+      for name in pairs(opts.params) do
+         param_names[#param_names + 1] = name
+      end
+      table.sort(param_names)
+      for _, name in ipairs(param_names) do
+         local values = opts.params[name]
          local vals = {}
          for j = 1, #values do
             local v = values[j]
             if type(v) == "string" then
                vals[#vals + 1] = string.format("%q", v)
-            elseif type(v) == "boolean" then
-               vals[#vals + 1] = tostring(v)
             else
                vals[#vals + 1] = tostring(v)
             end
          end
-         parts[#parts + 1] = string.format(
-            "   [%q] = { %s },", name, table.concat(vals, ", ")
-         )
+         parts[#parts + 1] = string.format("   [%q] = { %s },", name, table.concat(vals, ", "))
       end
       parts[#parts + 1] = "}"
    end
@@ -124,6 +105,9 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
    -- Call compare_time and write results
    parts[#parts + 1] = "local results = luamark.compare_time(funcs, opts)"
    parts[#parts + 1] = string.format("local f = io.open(%q, 'w')", result_path)
+   parts[#parts + 1] = "if not f then error('cannot open ' .. "
+      .. string.format("%q", result_path)
+      .. ") end"
    parts[#parts + 1] = "f:write(json.encode(results))"
    parts[#parts + 1] = "f:close()"
 
@@ -139,8 +123,13 @@ end
 --- @return table[]|nil results Parsed luamark results, or nil on error.
 --- @return string|nil err Error message on failure.
 local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts)
-   local wrapper_path = os.tmpname() .. ".lua"
-   local result_path = os.tmpname() .. ".json"
+   local wrapper_base = os.tmpname()
+   local result_base = os.tmpname()
+   local wrapper_path = wrapper_base .. ".lua"
+   local result_path = result_base .. ".json"
+   -- os.tmpname() creates actual files on POSIX; remove the originals since we use suffixed paths.
+   os.remove(wrapper_base)
+   os.remove(result_base)
 
    local wrapper = generate_wrapper(bench_file, targets, spec_name, opts, result_path)
 
@@ -155,13 +144,17 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    wf:close()
 
    -- Execute subprocess
-   local cmd = shellquote(runtime_path) .. " " .. shellquote(wrapper_path) .. " 2>&1"
-   local ok = exec_ok(cmd)
+   local cmd = quote_arg(runtime_path) .. " " .. quote_arg(wrapper_path)
+   local ok, _, stdout, stderr = utils.executeex(cmd)
 
    if not ok then
       pcall(os.remove, wrapper_path)
       pcall(os.remove, result_path)
-      return nil, "subprocess exited with non-zero status"
+      local output = (stderr or stdout or ""):match("^(.-)%s*$") or ""
+      if output ~= "" then
+         return nil, "subprocess failed: " .. output
+      end
+      return nil, "subprocess failed"
    end
 
    -- Read results

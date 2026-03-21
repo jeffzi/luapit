@@ -1,33 +1,28 @@
 local path = require("pl.path")
 local pldir = require("pl.dir")
+local utils = require("pl.utils")
 
 local M = {}
 
+local quote_arg = utils.quote_arg
+
 --- Execute a shell command and return whether it succeeded.
---- Compatible with Lua 5.1, 5.2, 5.3, 5.4, and LuaJIT.
 --- @param cmd string Shell command to execute.
 --- @return boolean ok True if command exited with code 0.
 local function exec_ok(cmd)
-   local r1, r2 = os.execute(cmd)
-   -- Lua 5.2+: r1=true/nil, r2="exit"/"signal"
-   -- Lua 5.1/LuaJIT: r1=exit_code (0=success), r2=nil
-   if r2 ~= nil then
-      return r1 == true
-   end
-   return r1 == 0
+   local ok = utils.executeex(cmd)
+   return ok == true
 end
 
 --- Capture stdout of a shell command, trimmed.
 --- @param cmd string Shell command to execute.
 --- @return string|nil output Trimmed output, or nil on failure.
 local function capture(cmd)
-   local h = io.popen(cmd)
-   if h == nil then
+   local ok, _, stdout = utils.executeex(cmd)
+   if not ok or not stdout then
       return nil
    end
-   local out = h:read("*a")
-   h:close()
-   return out:match("^(.-)%s*$")
+   return stdout:match("^(.-)%s*$")
 end
 
 --- @class ParsedTarget
@@ -79,7 +74,7 @@ function M.parse_target(spec)
       )
 end
 
---- Derive display name from parsed target per D-17/D-18/D-19/D-23.
+--- Derive display name from parsed target.
 --- @param parsed ParsedTarget Parsed target data.
 --- @return string name Display name.
 function M.display_name(parsed)
@@ -139,14 +134,6 @@ local function make_temp_dir(prefix)
    return dir_path
 end
 
---- Wrap value in single quotes for POSIX-safe shell quoting,
---- escaping any embedded single quotes.
---- @param s string Value to quote for shell interpolation.
---- @return string quoted Shell-safe quoted string.
-local function shellquote(s)
-   return "'" .. s:gsub("'", "'\\''") .. "'"
-end
-
 --- Detect whether a repository URL is remote.
 --- @param repo string Repository path or URL.
 --- @return boolean is_remote True if URL is remote (HTTPS or SSH).
@@ -166,44 +153,33 @@ local function clone_repo(repo_url, dest_dir, ref, is_remote)
       -- Try shallow clone with --branch first (works for tags/branches)
       local shallow_cmd = table.concat({
          "git clone --depth 1 --branch",
-         shellquote(ref),
-         shellquote(repo_url),
-         shellquote(dest_dir),
+         quote_arg(ref),
+         quote_arg(repo_url),
+         quote_arg(dest_dir),
          "2>/dev/null",
       }, " ")
       if exec_ok(shallow_cmd) then
          return true
       end
+   end
 
-      -- Fall back to full clone (commit hash or other reason)
-      local full_cmd = table.concat({
-         "git clone",
-         shellquote(repo_url),
-         shellquote(dest_dir),
-         "2>/dev/null",
-      }, " ")
-      if not exec_ok(full_cmd) then
-         return nil, string.format("failed to clone %q", repo_url)
-      end
-   else
-      -- Local repos: always full clone (per D-13)
-      local cmd = table.concat({
-         "git clone",
-         shellquote(repo_url),
-         shellquote(dest_dir),
-         "2>/dev/null",
-      }, " ")
-      if not exec_ok(cmd) then
-         return nil, string.format("failed to clone %q", repo_url)
-      end
+   -- Full clone: remote fallback (commit hash) or local repos
+   local clone_cmd = table.concat({
+      "git clone",
+      quote_arg(repo_url),
+      quote_arg(dest_dir),
+      "2>/dev/null",
+   }, " ")
+   if not exec_ok(clone_cmd) then
+      return nil, string.format("failed to clone %q", repo_url)
    end
 
    -- Checkout ref (needed for full clones that didn't use --branch)
    local checkout_cmd = table.concat({
       "git -C",
-      shellquote(dest_dir),
+      quote_arg(dest_dir),
       "checkout",
-      shellquote(ref),
+      quote_arg(ref),
       "2>/dev/null",
    }, " ")
    if not exec_ok(checkout_cmd) then
@@ -237,7 +213,7 @@ end
 --- @return ResolvedTarget[]|nil targets Resolved targets, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.resolve_targets(raw_specs)
-   -- Parse all specs first (fail fast on any parse error per D-11)
+   -- Parse all specs first (fail fast on any parse error)
    local parsed_list = {}
    for i = 1, #raw_specs do
       local parsed, err = M.parse_target(raw_specs[i])
@@ -247,7 +223,7 @@ function M.resolve_targets(raw_specs)
       parsed_list[#parsed_list + 1] = parsed
    end
 
-   -- Check for duplicate display names (per D-20)
+   -- Check for duplicate display names
    local ok, err = M.validate_targets(parsed_list, raw_specs)
    if ok == nil then
       return nil, err
@@ -296,7 +272,7 @@ function M.resolve_targets(raw_specs)
 end
 
 --- Clean up temp directories created during target resolution.
---- Warns on stderr if removal fails but does not error (per D-16).
+--- Warns on stderr if removal fails but does not error.
 --- @param targets ResolvedTarget[] List of resolved targets.
 function M.cleanup(targets)
    for i = 1, #targets do

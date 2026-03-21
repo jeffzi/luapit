@@ -18,9 +18,8 @@ local function parse_params(raw_params)
    for i = 1, #raw_params do
       local name, value = raw_params[i]:match("^([^:]+):(.+)$")
       if not name then
-         return nil, string.format(
-            "invalid parameter format: %q (expected NAME:VALUE)", raw_params[i]
-         )
+         return nil,
+            string.format("invalid parameter format: %q (expected NAME:VALUE)", raw_params[i])
       end
       local num = tonumber(value)
       if num then
@@ -67,14 +66,14 @@ function M.main(argv)
    local args = parser:parse(argv)
 
    if args.command == "ref" then
-      -- Resolve targets (fail fast per D-11)
+      -- Resolve targets (fail fast on error)
       local targets, err = resolve.resolve_targets(args.targets)
       if targets == nil then
          io.stderr:write("luabench: " .. err .. "\n")
          os.exit(1)
       end
 
-      -- Discover benchmarks (default to cwd per D-02)
+      -- Discover benchmarks (default to cwd)
       local bench_paths = args.bench
       if #bench_paths == 0 then
          bench_paths = { "." }
@@ -104,7 +103,7 @@ function M.main(argv)
          opts.params = params
       end
 
-      -- Resolve runtime if -R specified (fail fast per D-09)
+      -- Resolve runtime if -R specified (fail fast on error)
       if args.runtime then
          local runtime_path, runtime_err = subprocess.resolve_runtime(args.runtime)
          if runtime_path == nil then
@@ -115,7 +114,7 @@ function M.main(argv)
          opts.runtime = runtime_path
       end
 
-      -- Run benchmarks then cleanup (cleanup always runs per D-14)
+      -- Run benchmarks then cleanup (cleanup always runs)
       local run_ok, run_result = pcall(runner.run, bench_files, targets, opts)
       resolve.cleanup(targets)
       if not run_ok then
@@ -123,7 +122,7 @@ function M.main(argv)
          os.exit(1)
       end
 
-      if run_ok and args.output then
+      if args.output then
          local ok, write_err = export.write_json(args.output, run_result, targets, M._VERSION)
          if not ok then
             io.stderr:write("luabench: failed to write JSON: " .. tostring(write_err) .. "\n")

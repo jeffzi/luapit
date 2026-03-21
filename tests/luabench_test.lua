@@ -1,5 +1,7 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field
+
 local lfs = require("lfs")
+require("terminal")
 
 describe("luabench", function()
    local luabench
@@ -203,7 +205,9 @@ describe("luabench", function()
       s.discover_mod.discover = function()
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() return {} end
+      s.runner_mod.run = function()
+         return {}
+      end
 
       luabench.main({ "ref", ".#main", ".#dev" })
 
@@ -227,7 +231,9 @@ describe("luabench", function()
       s.discover_mod.discover = function()
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() return {} end
+      s.runner_mod.run = function()
+         return {}
+      end
 
       luabench.main({ "ref", ".#main" })
 
@@ -280,7 +286,9 @@ describe("luabench", function()
          s.state.discover_called_with = paths
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() return {} end
+      s.runner_mod.run = function()
+         return {}
+      end
 
       luabench.main({ "ref", ".#main" })
 
@@ -302,7 +310,9 @@ describe("luabench", function()
          s.state.discover_called_with = paths
          return { "bench1.lua" }
       end
-      s.runner_mod.run = function() return {} end
+      s.runner_mod.run = function()
+         return {}
+      end
 
       luabench.main({ "ref", ".#main", "-b", "benchmarks/", "-b", "tests/" })
 
@@ -623,10 +633,7 @@ describe("luabench", function()
       s.teardown()
 
       assert.is_not_nil(s.state.write_json_called_with)
-      assert.are_equal(
-         "/tmp/test_output.json",
-         s.state.write_json_called_with.filepath
-      )
+      assert.are_equal("/tmp/test_output.json", s.state.write_json_called_with.filepath)
       assert.are_same(run_results, s.state.write_json_called_with.results)
       assert.are_same(resolved, s.state.write_json_called_with.targets)
       assert.are_equal("0.4.0", s.state.write_json_called_with.version)
@@ -701,7 +708,7 @@ describe("luabench", function()
       local original_resolve = subprocess_mod.resolve_runtime
 
       subprocess_mod.resolve_runtime = function()
-         return nil, "runtime not found: \"bad_runtime\""
+         return nil, 'runtime not found: "bad_runtime"'
       end
 
       s.resolve_mod.resolve_targets = function()
