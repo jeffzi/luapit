@@ -1,10 +1,10 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter
-local lfs = require("lfs")
+local path = require("pl.path")
 
 describe("subprocess", function()
    local subprocess
 
-   local CWD = lfs.currentdir()
+   local CWD = path.currentdir()
    local FIXTURE_DIR = CWD .. "/tests/fixtures"
    local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
    local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
@@ -152,13 +152,13 @@ describe("subprocess", function()
       assert.is_true(ok, "run_subprocess raised: " .. tostring(call_err))
       assert.is_true(#base_files >= 2, "expected at least 2 tmpname calls")
 
-      for _, path in ipairs(base_files) do
-         local f = io.open(path, "r")
+      for _, tmp in ipairs(base_files) do
+         local f = io.open(tmp, "r")
          if f then
             f:close()
-            os.remove(path) -- cleanup for test hygiene
+            os.remove(tmp)
          end
-         assert.is_nil(f, "orphan temp file was not removed: " .. path)
+         assert.is_nil(f, "orphan temp file was not removed: " .. tmp)
       end
    end)
 

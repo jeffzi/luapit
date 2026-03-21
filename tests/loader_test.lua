@@ -1,9 +1,9 @@
 ---@diagnostic disable: need-check-nil
-local lfs = require("lfs")
+local path = require("pl.path")
 
 local loader = require("luabench.loader")
 
-local FIXTURE_DIR = lfs.currentdir() .. "/tests/fixtures"
+local FIXTURE_DIR = path.currentdir() .. "/tests/fixtures"
 
 describe("loader", function()
    local original_stderr

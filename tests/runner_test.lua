@@ -1,12 +1,12 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field
 
-local lfs = require("lfs")
+local path = require("pl.path")
 require("terminal")
 
 describe("runner", function()
    local runner
 
-   local CWD = lfs.currentdir()
+   local CWD = path.currentdir()
    local FIXTURE_DIR = CWD .. "/tests/fixtures"
    local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
    local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"

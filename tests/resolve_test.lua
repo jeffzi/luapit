@@ -1,12 +1,11 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter, unused-local
-local lfs = require("lfs")
 local pldir = require("pl.dir")
 local plpath = require("pl.path")
 
 describe("resolve", function()
    local resolve
 
-   local CWD = lfs.currentdir()
+   local CWD = plpath.currentdir()
    local FIXTURE_DIR = CWD .. "/tests/fixtures"
    local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
 

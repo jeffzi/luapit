@@ -1,10 +1,10 @@
-local lfs = require("lfs")
+local path = require("pl.path")
 
 describe("discover", function()
    local discover
 
    local FIXTURES_DIR = "tests/fixtures/benchmarks"
-   local ABS_FIXTURES = lfs.currentdir() .. "/" .. FIXTURES_DIR
+   local ABS_FIXTURES = path.currentdir() .. "/" .. FIXTURES_DIR
 
    before_each(function()
       discover = require("luabench.discover").discover
