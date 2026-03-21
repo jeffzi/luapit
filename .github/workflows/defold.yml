@@ -1,0 +1,46 @@
+name: Defold
+
+on: [push, pull_request]
+
+jobs:
+  defold:
+    name: desktop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: "25"
+          distribution: "temurin"
+
+      - name: Setup Defold
+        uses: dapetcu21/setup-defold@v3.0.3
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: "5.4"
+
+      - name: Setup LuaRocks
+        uses: leafo/gh-actions-luarocks@v6
+        with:
+          luaRocksVersion: "3.13.0"
+
+      - name: Install luabench
+        run: |
+          luarocks install busted
+          luarocks install penlight
+          luarocks install luamark
+          luarocks install argparse --dev
+          luarocks install dkjson
+          luarocks install chronos
+          luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
+          luarocks make
+
+      - name: Run Defold integration test
+        timeout-minutes: 10
+        run: luabench ref . -R defold -b tests/engines/fixtures/ -t
