@@ -47,19 +47,43 @@ function M.with_target(target_dir, fn)
    return result
 end
 
+--- Map luamark compare_time Result[] to per-target stat entries.
+--- @param results table[] Array of luamark Result objects.
+--- @return table[] stats Array of {name, median, ci_lower, ci_upper, rounds, rank, ratio}.
+local function map_results(results)
+   local stats = {}
+   for i = 1, #results do
+      local r = results[i]
+      stats[#stats + 1] = {
+         name = r.name,
+         median = r.median,
+         ci_lower = r.ci_lower,
+         ci_upper = r.ci_upper,
+         rounds = r.rounds,
+         rank = r.rank,
+         ratio = r.relative,
+      }
+   end
+   return stats
+end
+
+local HEADER_PREFIX = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
+
 --- Run a single-Spec benchmark across targets.
 --- @param id string Benchmark identity string.
 --- @param funcs table<string, table> Map of target_name -> Spec.
+--- @return table[]|nil results Raw luamark compare_time results, or nil on error.
 local function run_single(id, funcs)
-   io.write(string.format("\n-- %s --\n", id))
+   io.write(string.format("\n%s %s\n", HEADER_PREFIX, id))
    local ok, results = pcall(luamark.compare_time, funcs)
    if not ok then
       io.stderr:write(
          string.format("luabench: warning: benchmark error in %s: %s\n", id, tostring(results))
       )
-      return
+      return nil
    end
    io.write(luamark.render(results) .. "\n")
+   return results
 end
 
 --- Load a benchmark file from each target.
@@ -90,7 +114,10 @@ end
 --- Run benchmarks across targets.
 --- @param bench_files string[] Absolute paths to benchmark files.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
+--- @return table[] all_results Flat array of {file, spec, targets} benchmark result entries.
 function M.run(bench_files, targets)
+   local all_results = {}
+
    for i = 1, #bench_files do
       local bench_file = bench_files[i]
       local rel_path = path.relpath(bench_file)
@@ -119,11 +146,20 @@ function M.run(bench_files, targets)
                end
             end
             if next(funcs) ~= nil then
-               run_single(loader.bench_id(rel_path, spec_name), funcs)
+               local results = run_single(loader.bench_id(rel_path, spec_name), funcs)
+               if results ~= nil then
+                  all_results[#all_results + 1] = {
+                     file = rel_path:gsub("_bench%.lua$", ""),
+                     spec = spec_name == "" and "default" or spec_name,
+                     targets = map_results(results),
+                  }
+               end
             end
          end
       end
    end
+
+   return all_results
 end
 
 return M
