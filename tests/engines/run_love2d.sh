@@ -5,13 +5,13 @@ set -euo pipefail
 # Checks for the love binary, then runs luabench in test mode.
 
 command -v love >/dev/null || {
-	printf "SKIP: love not found in PATH\n"
-	exit 0
+  printf "SKIP: love not found in PATH\n"
+  exit 0
 }
 
 command -v luabench >/dev/null || {
-	printf "ERROR: luabench not found in PATH (run 'luarocks make' first)\n" >&2
-	exit 1
+  printf "ERROR: luabench not found in PATH (run 'luarocks make' first)\n" >&2
+  exit 1
 }
 
 printf "Running Love2D integration test...\n"
