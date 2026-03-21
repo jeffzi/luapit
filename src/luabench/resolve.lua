@@ -100,20 +100,25 @@ end
 
 --- Validate parsed targets for duplicate display names.
 --- @param parsed_list ParsedTarget[] List of parsed targets.
+--- @param raw_specs string[] Original raw spec strings (for error messages).
 --- @return boolean|nil ok True if valid, nil on error.
 --- @return string|nil err Error message if duplicates found.
-function M.validate_targets(parsed_list)
-   local seen = {}
+function M.validate_targets(parsed_list, raw_specs)
+   local seen = {} --- @type table<string, string>
    for i = 1, #parsed_list do
       local name = M.display_name(parsed_list[i])
       if seen[name] then
          return nil,
             string.format(
-               "duplicate target name %q -- add aliases to disambiguate (e.g. alias1=target1 alias2=target2)",
-               name
+               "duplicate target name %q (from %q and %q) -- add aliases to disambiguate (e.g. a=%s b=%s)",
+               name,
+               seen[name],
+               raw_specs[i],
+               seen[name],
+               raw_specs[i]
             )
       end
-      seen[name] = true
+      seen[name] = raw_specs[i]
    end
    return true
 end
@@ -243,7 +248,7 @@ function M.resolve_targets(raw_specs)
    end
 
    -- Check for duplicate display names (per D-20)
-   local ok, err = M.validate_targets(parsed_list)
+   local ok, err = M.validate_targets(parsed_list, raw_specs)
    if ok == nil then
       return nil, err
    end

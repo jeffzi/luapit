@@ -140,17 +140,20 @@ describe("resolve", function()
 
    -- validate_targets: duplicate detection
 
-   it("validate_targets detects duplicate display names", function()
+   it("validate_targets detects duplicate display names with original specs", function()
       local parsed_list = {
          { repo = ".", ref = "main" },
          { repo = "https://example.com/repo", ref = "main" },
       }
+      local raw_specs = { ".#main", "https://example.com/repo#main" }
 
-      local ok, err = resolve.validate_targets(parsed_list)
+      local ok, err = resolve.validate_targets(parsed_list, raw_specs)
 
       assert.is_nil(ok)
       assert.matches("duplicate", err)
-      assert.matches("main", err)
+      assert.matches('"main"', err)
+      assert.matches(".#main", err, 1, true)
+      assert.matches("https://example.com/repo#main", err, 1, true)
    end)
 
    it("validate_targets passes when names are unique", function()
@@ -158,8 +161,9 @@ describe("resolve", function()
          { alias = "v1", repo = ".", ref = "v1.0.0" },
          { repo = ".", ref = "main" },
       }
+      local raw_specs = { "v1=.#v1.0.0", ".#main" }
 
-      local ok = resolve.validate_targets(parsed_list)
+      local ok = resolve.validate_targets(parsed_list, raw_specs)
 
       assert.is_true(ok)
    end)
