@@ -15,3 +15,11 @@ files["tests/**/*.lua"] = {
 files["tests/*_test.lua"] = {
    ignore = { "122" }, -- setting read-only field (io.stderr capture in tests)
 }
+
+files["tests/engines/fixtures/love2d_math_bench.lua"] = {
+   globals = { "love" },
+}
+
+files["tests/engines/fixtures/defold_vmath_bench.lua"] = {
+   globals = { "vmath" },
+}
