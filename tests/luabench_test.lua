@@ -67,6 +67,15 @@ describe("luabench", function()
       assert.are_same({ ".#main", ".#dev", "/tmp/mylib" }, args.targets)
    end)
 
+   it("parsing ref with multiple --filter values produces table", function()
+      local parser = luabench.build_parser()
+
+      local ok, args = parser:pparse({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
+
+      assert.is_true(ok)
+      assert.are_same({ "sort", "hash" }, args.filter)
+   end)
+
    it("parsing ref does not accept old -r flag", function()
       local parser = luabench.build_parser()
 
@@ -367,8 +376,8 @@ describe("luabench", function()
       s.discover_mod.discover = function()
          return { "bench1.lua", "bench2.lua" }
       end
-      s.runner_mod.run = function(files, targets)
-         s.state.run_called_with = { files = files, targets = targets }
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
          return {}
       end
 
@@ -380,10 +389,204 @@ describe("luabench", function()
       assert.are_same(resolved, s.state.run_called_with.targets)
    end)
 
+   -- parse_params tests
+
+   it("_parse_params with number value coerces to number", function()
+      local params = luabench._parse_params({ "n:1000" })
+
+      assert.are_same({ n = { 1000 } }, params)
+   end)
+
+   it("_parse_params with boolean values coerces to boolean", function()
+      local params = luabench._parse_params({ "flag:true", "other:false" })
+
+      assert.are_same({ flag = { true }, other = { false } }, params)
+   end)
+
+   it("_parse_params with string value passes through", function()
+      local params = luabench._parse_params({ "name:hello" })
+
+      assert.are_same({ name = { "hello" } }, params)
+   end)
+
+   it("_parse_params with repeated name accumulates values", function()
+      local params = luabench._parse_params({ "n:100", "n:1000" })
+
+      assert.are_same({ n = { 100, 1000 } }, params)
+   end)
+
+   it("_parse_params with invalid format returns nil and error", function()
+      local params, err = luabench._parse_params({ "bad" })
+
+      assert.is_nil(params)
+      assert.matches("invalid parameter format", err)
+   end)
+
+   -- CLI flag wiring tests
+
+   it("main with -t flag passes opts.rounds=1 to runner.run", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "-t" })
+
+      s.teardown()
+
+      assert.are_equal(1, s.state.run_called_with.opts.rounds)
+   end)
+
+   it("main with --filter passes opts.filters to runner.run", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "--filter", "sort" })
+
+      s.teardown()
+
+      assert.are_same({ "sort" }, s.state.run_called_with.opts.filters)
+   end)
+
+   it("main with multiple --filter values passes all to opts.filters", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
+
+      s.teardown()
+
+      assert.are_same({ "sort", "hash" }, s.state.run_called_with.opts.filters)
+   end)
+
+   it("main with -p passes opts.params to runner.run", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "-p", "n:1000" })
+
+      s.teardown()
+
+      assert.are_same({ n = { 1000 } }, s.state.run_called_with.opts.params)
+   end)
+
+   it("main with combined flags passes combined opts", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main", "-t", "--filter", "sort", "-p", "n:100" })
+
+      s.teardown()
+
+      local opts = s.state.run_called_with.opts
+      assert.are_equal(1, opts.rounds)
+      assert.are_same({ "sort" }, opts.filters)
+      assert.are_same({ n = { 100 } }, opts.params)
+   end)
+
+   it("main without -t --filter -p passes empty opts to runner.run", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      s.runner_mod.run = function(files, targets, opts)
+         s.state.run_called_with = { files = files, targets = targets, opts = opts }
+         return {}
+      end
+
+      luabench.main({ "ref", ".#main" })
+
+      s.teardown()
+
+      assert.are_same({}, s.state.run_called_with.opts)
+   end)
+
+   it("main with invalid -p format exits 1 with error", function()
+      local s = setup_main_stubs()
+
+      s.resolve_mod.resolve_targets = function()
+         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
+      end
+      s.resolve_mod.cleanup = function() end
+      s.discover_mod.discover = function()
+         return { "bench1.lua" }
+      end
+      os.exit = function(code) -- luacheck: ignore 122
+         s.state.exit_code = code
+         error("EXIT")
+      end
+
+      pcall(luabench.main, { "ref", ".#main", "-p", "bad" })
+
+      local stderr_output = s.read_stderr()
+      s.teardown()
+
+      assert.are_equal(1, s.state.exit_code)
+      assert.matches("invalid parameter format", stderr_output)
+   end)
+
    -- Export wiring tests
 
-   it("_VERSION is 0.3.0", function()
-      assert.are_equal("0.3.0", luabench._VERSION)
+   it("_VERSION is 0.4.0", function()
+      assert.are_equal("0.4.0", luabench._VERSION)
    end)
 
    it("main calls export.write_json when -o is specified", function()
@@ -426,7 +629,7 @@ describe("luabench", function()
       )
       assert.are_same(run_results, s.state.write_json_called_with.results)
       assert.are_same(resolved, s.state.write_json_called_with.targets)
-      assert.are_equal("0.3.0", s.state.write_json_called_with.version)
+      assert.are_equal("0.4.0", s.state.write_json_called_with.version)
    end)
 
    it("main does not call export.write_json when -o is omitted", function()

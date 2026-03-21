@@ -6,7 +6,38 @@ local runner = require("luabench.runner")
 
 local M = {}
 
-M._VERSION = "0.3.0"
+M._VERSION = "0.4.0"
+
+--- Parse raw parameter strings into a typed params table.
+--- @param raw_params string[] Array of "NAME:VALUE" strings.
+--- @return table<string, any[]>|nil params Parsed params, or nil on error.
+--- @return string|nil err Error message if parsing failed.
+local function parse_params(raw_params)
+   local params = {}
+   for i = 1, #raw_params do
+      local name, value = raw_params[i]:match("^([^:]+):(.+)$")
+      if not name then
+         return nil, string.format(
+            "invalid parameter format: %q (expected NAME:VALUE)", raw_params[i]
+         )
+      end
+      local num = tonumber(value)
+      if num then
+         value = num
+      elseif value == "true" then
+         value = true
+      elseif value == "false" then
+         value = false
+      end
+      if not params[name] then
+         params[name] = {}
+      end
+      params[name][#params[name] + 1] = value
+   end
+   return params
+end
+
+M._parse_params = parse_params
 
 --- Build argparse parser with all CLI flags.
 --- @return table parser Configured argparse parser.
@@ -23,7 +54,7 @@ function M.build_parser()
    ref:option("-R --runtime", "Lua runtime [default: luajit].")
    ref:option("-o --output", "Output file path.")
    ref:flag("-t --test", "Run in test mode (minimal rounds).")
-   ref:option("--filter", "Filter benchmarks by name pattern.")
+   ref:option("--filter", "Filter benchmarks by name pattern."):count("*")
 
    return parser
 end
@@ -54,8 +85,26 @@ function M.main(argv)
          os.exit(1)
       end
 
+      -- Build opts from CLI flags
+      local opts = {}
+      if args.test then
+         opts.rounds = 1
+      end
+      if args.filter and #args.filter > 0 then
+         opts.filters = args.filter
+      end
+      if args.param and #args.param > 0 then
+         local params, param_err = parse_params(args.param)
+         if params == nil then
+            resolve.cleanup(targets)
+            io.stderr:write("luabench: " .. param_err .. "\n")
+            os.exit(1)
+         end
+         opts.params = params
+      end
+
       -- Run benchmarks then cleanup (cleanup always runs per D-14)
-      local run_ok, run_result = pcall(runner.run, bench_files, targets)
+      local run_ok, run_result = pcall(runner.run, bench_files, targets, opts)
       resolve.cleanup(targets)
       if not run_ok then
          io.stderr:write("luabench: benchmark error: " .. tostring(run_result) .. "\n")
