@@ -52,7 +52,7 @@ function M.build_parser()
    ref:argument("targets", "Target specifiers ([alias=]repo#ref or local dir)."):args("+")
    ref:option("-b --bench", "Benchmark files or directories."):count("*")
    ref:option("-p --param", "Parameter in format NAME:VALUE."):count("*")
-   ref:option("-R --runtime", "Lua runtime [default: luajit].")
+   ref:option("-R --runtime", "Lua runtime (e.g. luajit, lua, love, defold).")
    ref:option("-o --output", "Output file path.")
    ref:flag("-t --test", "Run in test mode (minimal rounds).")
    ref:option("--filter", "Filter benchmarks by name pattern."):count("*")
@@ -69,7 +69,7 @@ function M.main(argv)
    if args.command == "ref" then
       -- Resolve targets (fail fast on error)
       local targets, err = resolve.resolve_targets(args.targets)
-      if targets == nil then
+      if not targets then
          io.stderr:write("luabench: " .. err .. "\n")
          os.exit(1)
       end
@@ -96,7 +96,7 @@ function M.main(argv)
       end
       if args.param and #args.param > 0 then
          local params, param_err = parse_params(args.param)
-         if params == nil then
+         if not params then
             resolve.cleanup(targets)
             io.stderr:write("luabench: " .. param_err .. "\n")
             os.exit(1)
@@ -112,7 +112,7 @@ function M.main(argv)
             resolve_name = engines.runtime_cmd(engine_name)
          end
          local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
-         if runtime_path == nil then
+         if not runtime_path then
             resolve.cleanup(targets)
             io.stderr:write("luabench: " .. runtime_err .. "\n")
             os.exit(1)

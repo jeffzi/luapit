@@ -134,18 +134,17 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    local wrapper = generate_wrapper(bench_file, targets, spec_name, opts, result_path)
 
    -- Write wrapper to temp file
-   local wf = io.open(wrapper_path, "w")
-   if not wf then
+   local ok, write_err = utils.writefile(wrapper_path, wrapper)
+   if not ok then
       pcall(os.remove, wrapper_path)
       pcall(os.remove, result_path)
-      return nil, "failed to create wrapper script"
+      return nil, "failed to create wrapper script: " .. tostring(write_err)
    end
-   wf:write(wrapper)
-   wf:close()
 
    -- Execute subprocess
    local cmd = quote_arg(runtime_path) .. " " .. quote_arg(wrapper_path)
-   local ok, _, stdout, stderr = utils.executeex(cmd)
+   local stdout, stderr
+   ok, _, stdout, stderr = utils.executeex(cmd) -- luacheck: ignore _
 
    if not ok then
       pcall(os.remove, wrapper_path)
@@ -158,14 +157,12 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    end
 
    -- Read results
-   local rf = io.open(result_path, "r")
-   if not rf then
+   local content, read_err = utils.readfile(result_path)
+   if not content then
       pcall(os.remove, wrapper_path)
       pcall(os.remove, result_path)
-      return nil, "subprocess did not produce results"
+      return nil, "subprocess did not produce results: " .. tostring(read_err)
    end
-   local content = rf:read("*a")
-   rf:close()
 
    -- Cleanup temp files
    pcall(os.remove, wrapper_path)

@@ -69,13 +69,11 @@ local function scaffold_html5_project(bench_file, targets, spec_name, opts)
 
    -- Overwrite test.script with HTML5 version
    local wrapper = generate_html5_wrapper(bench_file, targets, spec_name, opts)
-   local f = io.open(tmpdir .. "/main/test.script", "w")
-   if not f then
+   local ok, err = utils.writefile(tmpdir .. "/main/test.script", wrapper)
+   if not ok then
       dir.rmtree(tmpdir)
-      return nil, "cannot write HTML5 test.script"
+      return nil, "cannot write HTML5 test.script: " .. tostring(err)
    end
-   f:write(wrapper)
-   f:close()
 
    return tmpdir
 end

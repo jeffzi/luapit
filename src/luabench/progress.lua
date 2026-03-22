@@ -94,10 +94,7 @@ end
 --- @param template? string Optional template override.
 --- @return string Formatted string.
 function ProgressBar:_format(template)
-   local elapsed = 0
-   if self.start_time ~= nil then
-      elapsed = chronos_nanotime() - self.start_time
-   end
+   local elapsed = self.start_time and (chronos_nanotime() - self.start_time) or 0
    local pct = 0
    if self.total > 0 then
       pct = self.pos / self.total

@@ -75,22 +75,17 @@ describe("loader", function()
 
    -- load_benchmark: non-table return path
 
-   it("load_benchmark with non-table return returns nil and warns to stderr", function()
-      local result_nil = loader.load_benchmark(FIXTURE_DIR .. "/nil_return_bench.lua")
-      local err_nil = read_stderr()
+   for _, case in ipairs({
+      { file = "/nil_return_bench.lua", desc = "nil return" },
+      { file = "/string_return_bench.lua", desc = "string return" },
+   }) do
+      it("load_benchmark with " .. case.desc .. " returns nil and warns to stderr", function()
+         local result = loader.load_benchmark(FIXTURE_DIR .. case.file)
 
-      -- reset stderr for second call
-      io.stderr:close()
-      io.stderr = io.tmpfile()
-
-      local result_str = loader.load_benchmark(FIXTURE_DIR .. "/string_return_bench.lua")
-      local err_str = read_stderr()
-
-      assert.is_nil(result_nil)
-      assert.matches("did not return a table", err_nil)
-      assert.is_nil(result_str)
-      assert.matches("did not return a table", err_str)
-   end)
+         assert.is_nil(result)
+         assert.matches("did not return a table", read_stderr())
+      end)
+   end
 
    -- bench_id: identity derivation
 

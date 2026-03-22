@@ -105,13 +105,12 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    end
 
    -- Write conf.lua
-   local cf = io.open(tmpdir .. "/conf.lua", "w")
-   if not cf then
+   local write_err
+   ok, write_err = utils.writefile(tmpdir .. "/conf.lua", CONF_TEMPLATE)
+   if not ok then
       dir.rmtree(tmpdir)
-      return nil, "failed to write conf.lua"
+      return nil, "failed to write conf.lua: " .. tostring(write_err)
    end
-   cf:write(CONF_TEMPLATE)
-   cf:close()
 
    -- Generate result path (absolute, outside tmpdir)
    local result_base = os.tmpname()
@@ -120,13 +119,11 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
 
    -- Write main.lua
    local wrapper = generate_love_wrapper(bench_file, targets, spec_name, opts, result_path)
-   local mf = io.open(tmpdir .. "/main.lua", "w")
-   if not mf then
+   ok, write_err = utils.writefile(tmpdir .. "/main.lua", wrapper)
+   if not ok then
       dir.rmtree(tmpdir)
-      return nil, "failed to write main.lua"
+      return nil, "failed to write main.lua: " .. tostring(write_err)
    end
-   mf:write(wrapper)
-   mf:close()
 
    return tmpdir, result_path
 end
@@ -167,13 +164,11 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
 
    -- Read results
-   local rf = io.open(result_path, "r")
-   if not rf then
+   local content, read_err = utils.readfile(result_path)
+   if not content then
       cleanup()
-      return nil, "engine did not produce results"
+      return nil, "engine did not produce results: " .. tostring(read_err)
    end
-   local content = rf:read("*a")
-   rf:close()
 
    cleanup()
 

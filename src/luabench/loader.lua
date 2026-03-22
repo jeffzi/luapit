@@ -19,7 +19,7 @@ function M.load_benchmark(filepath)
       return nil
    end
 
-   if result.fn ~= nil then
+   if result.fn then
       return { [""] = result }
    else
       return result
@@ -32,7 +32,7 @@ end
 --- @return string
 function M.bench_id(filepath, spec_name)
    local id = filepath:gsub("_bench%.lua$", "")
-   if spec_name ~= nil and spec_name ~= "" then
+   if spec_name and spec_name ~= "" then
       id = id .. "::" .. spec_name
    end
    return id

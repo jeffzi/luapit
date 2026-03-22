@@ -10,7 +10,7 @@ local function discover(paths)
    local files = {}
    for i = 1, #paths do
       local p = paths[i]
-      if path.isfile(p) and p:match(BENCH_PATTERN) ~= nil then
+      if path.isfile(p) and p:match(BENCH_PATTERN) then
          files[#files + 1] = path.abspath(p)
       elseif path.isdir(p) then
          local found = dir.getallfiles(p, "*_bench.lua")

@@ -124,7 +124,7 @@ local function load_targets(bench_file, targets)
       local result = M.with_target(target.path, function()
          return loader.load_benchmark(bench_file)
       end)
-      if result ~= nil then
+      if result then
          loaded[#loaded + 1] = {
             name = target.name,
             path = target.path,
@@ -232,7 +232,7 @@ function M.run(bench_files, targets, opts)
                -- Subprocess execution path
                local spec_targets = {}
                for j = 1, #loaded do
-                  if loaded[j].result[spec_name] ~= nil then
+                  if loaded[j].result[spec_name] then
                      spec_targets[#spec_targets + 1] = {
                         path = loaded[j].path,
                         name = loaded[j].name,
@@ -272,11 +272,11 @@ function M.run(bench_files, targets, opts)
                local funcs = {}
                for j = 1, #loaded do
                   local entry = loaded[j]
-                  if entry.result[spec_name] ~= nil then
+                  if entry.result[spec_name] then
                      funcs[entry.name] = entry.result[spec_name]
                   end
                end
-               if next(funcs) ~= nil then
+               if next(funcs) then
                   local results = run_with_output(bench_id, bar, function()
                      local ok, res = pcall(luamark.compare_time, funcs, compare_opts)
                      if not ok then

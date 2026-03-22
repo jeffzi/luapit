@@ -1,3 +1,4 @@
+local path = require("pl.path")
 local utils = require("pl.utils")
 
 local quote_arg = utils.quote_arg
@@ -48,18 +49,14 @@ end
 --- @return boolean ok True on success.
 --- @return string|nil err Error message on failure.
 function M.copy_file(src, dst)
-   local sf = io.open(src, "rb")
-   if not sf then
-      return false, "cannot open source: " .. src
+   local content, err = utils.readfile(src, true)
+   if not content then
+      return false, "cannot read source: " .. src .. ": " .. tostring(err)
    end
-   local content = sf:read("*a")
-   sf:close()
-   local df = io.open(dst, "wb")
-   if not df then
-      return false, "cannot open destination: " .. dst
+   local ok, write_err = utils.writefile(dst, content, true)
+   if not ok then
+      return false, "cannot write destination: " .. dst .. ": " .. tostring(write_err)
    end
-   df:write(content)
-   df:close()
    return true
 end
 
@@ -192,9 +189,7 @@ function M.find_module_path(modname)
    local mod_file = modname:gsub("%.", sep)
    for template in package.path:gmatch("[^;]+") do
       local fpath = template:gsub("%?", mod_file)
-      local f = io.open(fpath, "r")
-      if f then
-         f:close()
+      if path.isfile(fpath) then
          return fpath
       end
    end

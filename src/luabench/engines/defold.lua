@@ -142,13 +142,7 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
 
    -- Write static project files
    local function write_file(fpath, content)
-      local f = io.open(fpath, "w")
-      if not f then
-         return nil, "cannot write: " .. fpath
-      end
-      f:write(content)
-      f:close()
-      return true
+      return utils.writefile(fpath, content)
    end
 
    ok, err = write_file(tmpdir .. "/game.project", GAME_PROJECT)
@@ -283,13 +277,11 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
 
    -- Read results
-   local rf = io.open(result_path, "r")
-   if not rf then
+   local content, err = utils.readfile(result_path)
+   if not content then
       cleanup()
-      return nil, "Defold process did not produce results"
+      return nil, "Defold process did not produce results: " .. tostring(err)
    end
-   local content = rf:read("*a")
-   rf:close()
 
    cleanup()
 

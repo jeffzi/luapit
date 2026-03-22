@@ -38,7 +38,7 @@ end
 --- @return string|nil err Error message if parsing failed.
 function M.parse_target(spec)
    local alias, rest = spec:match("^([^=]+)=(.+)$")
-   if alias == nil then
+   if not alias then
       rest = spec
    end
 
@@ -50,15 +50,15 @@ function M.parse_target(spec)
 
    -- SSH: git@host:path#ref
    repo, ref = rest:match("^(git@[^#]+)#(.+)$")
-   if repo == nil then
+   if not repo then
       -- HTTPS: https://...#ref
       repo, ref = rest:match("^(https?://[^#]+)#(.+)$")
    end
-   if repo == nil then
+   if not repo then
       -- Local: .<optional-path>#ref
       repo, ref = rest:match("^(%.[^#]*)#(.+)$")
    end
-   if repo ~= nil then
+   if repo then
       return { alias = alias, repo = repo, ref = ref }
    end
 
@@ -78,16 +78,16 @@ end
 --- @param parsed ParsedTarget Parsed target data.
 --- @return string name Display name.
 function M.display_name(parsed)
-   if parsed.alias ~= nil then
+   if parsed.alias then
       return parsed.alias
    end
    if parsed.bare_dot then
       return "working-tree"
    end
-   if parsed.local_dir ~= nil then
+   if parsed.local_dir then
       return path.basename(parsed.local_dir)
    end
-   if parsed.ref ~= nil then
+   if parsed.ref then
       return parsed.ref
    end
    return "unknown"
@@ -128,7 +128,7 @@ local function make_temp_dir(prefix)
    local sanitized = prefix:gsub("[^%w%-_]", "_")
    local dir_path = tmp .. "-luabench-" .. sanitized
    local ok, err = pldir.makepath(dir_path)
-   if ok == nil then
+   if not ok then
       return nil, err
    end
    return dir_path
@@ -217,7 +217,7 @@ function M.resolve_targets(raw_specs)
    local parsed_list = {}
    for i = 1, #raw_specs do
       local parsed, err = M.parse_target(raw_specs[i])
-      if parsed == nil then
+      if not parsed then
          return nil, err
       end
       parsed_list[#parsed_list + 1] = parsed
@@ -225,7 +225,7 @@ function M.resolve_targets(raw_specs)
 
    -- Check for duplicate display names
    local ok, err = M.validate_targets(parsed_list, raw_specs)
-   if ok == nil then
+   if not ok then
       return nil, err
    end
 
@@ -238,15 +238,15 @@ function M.resolve_targets(raw_specs)
 
       if p.bare_dot then
          resolved[#resolved + 1] = resolve_bare_dot(p.alias)
-      elseif p.local_dir ~= nil then
+      elseif p.local_dir then
          resolved[#resolved + 1] = {
             path = p.local_dir,
             name = name,
             cleanup = false,
          }
-      elseif p.repo ~= nil and p.ref ~= nil then
+      elseif p.repo and p.ref then
          local temp_dir, temp_err = make_temp_dir(p.ref)
-         if temp_dir == nil then
+         if not temp_dir then
             M.cleanup(cleanup_on_error)
             return nil, "failed to create temp directory: " .. (temp_err or "unknown error")
          end
@@ -255,7 +255,7 @@ function M.resolve_targets(raw_specs)
          local repo_path = is_remote and p.repo or path.abspath(p.repo)
 
          local clone_ok, clone_err = clone_repo(repo_path, temp_dir, p.ref, is_remote)
-         if clone_ok == nil then
+         if not clone_ok then
             cleanup_on_error[#cleanup_on_error + 1] =
                { path = temp_dir, name = name, cleanup = true }
             M.cleanup(cleanup_on_error)

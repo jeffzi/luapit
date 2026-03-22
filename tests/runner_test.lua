@@ -67,7 +67,7 @@ describe("runner", function()
    -- run() orchestration with stubs
 
    --- Set up luamark and io stubs for run() tests.
-   --- @return table spy_state, fun() teardown
+   --- @return table spy_state, fun() teardown, fun() read_stderr
    local function setup_run_stubs()
       local luamark = require("luamark")
       local originals = {
@@ -118,14 +118,14 @@ describe("runner", function()
          io.stderr = originals.stderr
       end
 
-      return spy_state, teardown
-   end
+      --- Read captured stderr contents.
+      --- @return string
+      local function read_stderr()
+         io.stderr:seek("set")
+         return io.stderr:read("*a")
+      end
 
-   --- Read captured stderr contents.
-   --- @return string
-   local function read_stderr()
-      io.stderr:seek("set")
-      return io.stderr:read("*a")
+      return spy_state, teardown, read_stderr
    end
 
    it("run calls compare_time with target specs and renders output with header", function()
@@ -225,7 +225,7 @@ describe("runner", function()
    end)
 
    it("run catches compare_time errors and continues", function()
-      local _, teardown = setup_run_stubs()
+      local _, teardown, read_stderr = setup_run_stubs()
       local luamark = require("luamark")
       local call_count = 0
       luamark.compare_time = function()
@@ -583,7 +583,7 @@ describe("runner", function()
    end)
 
    it("run with opts.runtime handles subprocess error gracefully", function()
-      local _, teardown = setup_run_stubs()
+      local _, teardown, read_stderr = setup_run_stubs()
       local subprocess = require("luabench.subprocess")
       local original_run_subprocess = subprocess.run_subprocess
 

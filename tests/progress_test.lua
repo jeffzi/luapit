@@ -67,26 +67,21 @@ describe("progress", function()
       assert.matches("%d+s", formatted)
    end)
 
-   it("_format_duration formats seconds, minutes, hours correctly", function()
-      local bar = Progress({ total = 100, disable = true })
+   for _, case in ipairs({
+      { elapsed = 45, pattern = "%d+s", desc = "seconds" },
+      { elapsed = 120, pattern = "%d+%.%d+m", desc = "minutes" },
+      { elapsed = 7200, pattern = "%d+%.%d+h", desc = "hours" },
+   }) do
+      it("_format_duration formats " .. case.desc .. " correctly", function()
+         local bar = Progress({ total = 100, disable = true })
+         bar.start_time = chronos.nanotime() - case.elapsed
+         bar.pos = 100
 
-      -- Test via _format with known elapsed values
-      -- 45 seconds
-      bar.start_time = chronos.nanotime() - 45
-      bar.pos = 100
-      local formatted = bar:_format("{elapsed}")
-      assert.matches("%d+s", formatted)
+         local formatted = bar:_format("{elapsed}")
 
-      -- 120 seconds = 2.0m
-      bar.start_time = chronos.nanotime() - 120
-      formatted = bar:_format("{elapsed}")
-      assert.matches("%d+%.%d+m", formatted)
-
-      -- 7200 seconds = 2.0h
-      bar.start_time = chronos.nanotime() - 7200
-      formatted = bar:_format("{elapsed}")
-      assert.matches("%d+%.%d+h", formatted)
-   end)
+         assert.matches(case.pattern, formatted)
+      end)
+   end
 
    it("_format_bar produces bar with filled and empty segments", function()
       local bar = Progress({ total = 10, width = 12, disable = true })
