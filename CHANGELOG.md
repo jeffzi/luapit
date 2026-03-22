@@ -7,21 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-03-21
-
 ### Added
 
-- Shell-out mode for game engine runtimes via `-R love` and `-R defold`
-- Love2D adapter: scaffolds headless project, runs benchmarks via `love <tmpdir>`
-- Defold adapter: scaffolds project, builds with bob.jar, runs via `dmengine_headless`
-- Extensible engine adapter registry for adding new runtime backends
+- Game engine runtimes via `-R love`, `-R defold`, and `-R defold-html5`
+  for benchmarking code that depends on engine-specific APIs
+- Love2D runtime: runs benchmarks in a headless Love2D project
+- Defold runtime: builds a minimal Defold project and runs benchmarks
+  via the headless engine
+- Defold HTML5 runtime: builds for the `js-web` platform and runs
+  benchmarks in headless Chromium via Playwright
 
 ## [0.4.0] - 2026-03-21
 
 ### Added
 
 - Benchmark filtering via `--filter` with Lua pattern matching and OR logic for multiple patterns
-- User-defined parameters via `-p name:value` with auto-coercion (number, boolean, string) and accumulation
+- User-defined parameters via `-p name:value` with auto-coercion
+  (number, boolean, string), repeatable for multiple values per name
 - Test mode via `-t` for quick smoke testing (runs 1 round per benchmark)
 - Runtime selection via `-R` to spawn benchmarks under a different Lua interpreter
 
@@ -53,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - CLI restructured: targets are now positional args, benchmark paths moved to `-b`/`--bench` flag
-- Runner accepts structured `{path, name}` targets instead of plain directory strings
+- Targets now display with resolved names instead of raw directory paths
 
 ### Removed
 
@@ -64,8 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Benchmark file discovery with recursive directory scanning
-- Benchmark loader with single-Spec and named-Specs format detection
-- Runner with target isolation via package.path/package.loaded snapshots
+- Single-spec and named-specs benchmark file formats
+- Target isolation — each version uses its own modules, preventing cross-version leakage
 - CLI entrypoint with `ref` subcommand for comparing library versions
 - Full support for luamark Spec hooks (before, after, baseline)
 
@@ -73,8 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Restructured project from flat module to submodule layout
 
-[Unreleased]: https://github.com/jeffzi/luabench/compare/v0.5.0...HEAD
-[0.5.0]: https://github.com/jeffzi/luabench/compare/v0.4.0...v0.5.0
+[Unreleased]: https://github.com/jeffzi/luabench/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/jeffzi/luabench/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jeffzi/luabench/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jeffzi/luabench/compare/v0.1.0...v0.2.0
