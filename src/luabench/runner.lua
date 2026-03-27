@@ -47,24 +47,24 @@ end
 --- Execute fn with package.path prepended for target_dir.
 --- Restores package.path and cleans package.loaded even on error.
 --- @param target_dir string Directory to prepend to package.path.
---- @param fn fun(): any Function to execute in the target context.
---- @return any result Result of fn on success, or nil on error.
---- @return string|nil err Error message if fn raised an error.
+--- @param fn fun(): any, any Function to execute in the target context.
+--- @return any r1 First return of fn on success, or nil on error.
+--- @return any r2 Second return of fn on success, or error message on error.
 function M.with_target(target_dir, fn)
    local original_path = package.path
    local snap = snapshot_loaded()
 
    package.path = string.format("%s/?.lua;%s/?/init.lua;%s", target_dir, target_dir, original_path)
 
-   local ok, result = pcall(fn)
+   local ok, r1, r2 = pcall(fn)
 
    restore_loaded(snap)
    package.path = original_path
 
    if not ok then
-      return nil, result
+      return nil, r1
    end
-   return result
+   return r1, r2
 end
 
 --- Map luamark compare_time Result[] to per-target stat entries.
@@ -98,19 +98,22 @@ local HEADER_PREFIX = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
 local function run_with_output(id, bar, run_fn, err_label)
    bar:suspend()
    io.write(string.format("\n%s %s\n", HEADER_PREFIX, id))
-   local results, err = run_fn()
-   if not results then
-      io.stderr:write(
-         string.format("luabench: warning: %s in %s: %s\n", err_label, id, tostring(err))
-      )
+   local ok, r1, r2 = pcall(run_fn)
+   if not ok then
       io.flush()
       bar:resume()
-      return nil
+      error(r1, 0)
    end
-   io.write(luamark.render(results) .. "\n")
+   if r1 then
+      io.write(luamark.render(r1) .. "\n")
+   else
+      io.stderr:write(
+         string.format("luabench: warning: %s in %s: %s\n", err_label, id, tostring(r2))
+      )
+   end
    io.flush()
    bar:resume()
-   return results
+   return r1
 end
 
 --- Load a benchmark file from each target.
@@ -121,7 +124,7 @@ local function load_targets(bench_file, targets)
    local loaded = {}
    for j = 1, #targets do
       local target = targets[j]
-      local result = M.with_target(target.path, function()
+      local result, load_err = M.with_target(target.path, function()
          return loader.load_benchmark(bench_file)
       end)
       if result then
@@ -131,8 +134,14 @@ local function load_targets(bench_file, targets)
             result = result,
          }
       else
+         local detail = load_err and (": " .. tostring(load_err)) or ""
          io.stderr:write(
-            string.format("luabench: warning: skipping %s for target %s\n", bench_file, target.name)
+            string.format(
+               "luabench: warning: skipping %s for target %s%s\n",
+               bench_file,
+               target.name,
+               detail
+            )
          )
       end
    end
@@ -170,6 +179,101 @@ local function make_result_entry(rel_path, spec_name, results)
    }
 end
 
+--- Keys from opts that should not be forwarded to compare_time / adapters.
+local INTERNAL_OPT_KEYS = { filters = true, runtime = true, engine_name = true }
+
+--- Build compare_opts by copying opts without internal-only keys.
+--- @param opts table Full options table.
+--- @return table compare_opts Options safe to pass to compare_time / adapters.
+local function build_compare_opts(opts)
+   local compare_opts = {}
+   for k, v in pairs(opts) do
+      if not INTERNAL_OPT_KEYS[k] then
+         compare_opts[k] = v
+      end
+   end
+   return compare_opts
+end
+
+--- Run a single spec via subprocess or engine adapter.
+--- @param bench_id string Benchmark identity string.
+--- @param bar ProgressBar Progress bar instance.
+--- @param info table File info entry with bench_file, loaded, rel_path.
+--- @param spec_name string Spec name to run.
+--- @param opts table Full options (runtime, engine_name present).
+--- @param compare_opts table Options for compare_time / adapters.
+--- @return table|nil entry Result entry, or nil if skipped.
+local function run_spec_subprocess(bench_id, bar, info, spec_name, opts, compare_opts)
+   local spec_targets = {}
+   for j = 1, #info.loaded do
+      if info.loaded[j].result[spec_name] then
+         spec_targets[#spec_targets + 1] = {
+            path = info.loaded[j].path,
+            name = info.loaded[j].name,
+         }
+      end
+   end
+   if #spec_targets == 0 then
+      return nil
+   end
+
+   local engine_name = opts.engine_name
+   local err_label = engine_name and "engine error" or "subprocess error"
+   local results = run_with_output(bench_id, bar, function()
+      if engine_name then
+         local adapter = engines.get_adapter(engine_name)
+         return adapter.run(opts.runtime, info.bench_file, spec_targets, spec_name, compare_opts)
+      end
+      return subprocess.run_subprocess(
+         opts.runtime,
+         info.bench_file,
+         spec_targets,
+         spec_name,
+         compare_opts
+      )
+   end, err_label)
+
+   if results then
+      return make_result_entry(info.rel_path, spec_name, results)
+   end
+end
+
+--- Run a single spec in-process via luamark.compare_time.
+--- @param bench_id string Benchmark identity string.
+--- @param bar ProgressBar Progress bar instance.
+--- @param info table File info entry with loaded, rel_path.
+--- @param spec_name string Spec name to run.
+--- @param _ table Unused (uniform call signature with run_spec_subprocess).
+--- @param compare_opts table Options for compare_time.
+--- @return table|nil entry Result entry, or nil if skipped.
+local function run_spec_inprocess(bench_id, bar, info, spec_name, _, compare_opts)
+   local funcs = {}
+   for j = 1, #info.loaded do
+      local entry = info.loaded[j]
+      if entry.result[spec_name] then
+         funcs[entry.name] = entry.result[spec_name]
+      end
+   end
+   if not next(funcs) then
+      return nil
+   end
+
+   local results = run_with_output(bench_id, bar, function()
+      local ok, res = pcall(luamark.compare_time, funcs, compare_opts)
+      if not ok then
+         if type(res) == "string" and res:find("interrupted") then
+            error(res, 0)
+         end
+         return nil, res
+      end
+      return res
+   end, "benchmark error")
+
+   if results then
+      return make_result_entry(info.rel_path, spec_name, results)
+   end
+end
+
 --- Run benchmarks across targets.
 --- @param bench_files string[] Absolute paths to benchmark files.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
@@ -178,12 +282,8 @@ end
 function M.run(bench_files, targets, opts)
    opts = opts or {}
    local filters = opts.filters
-   local compare_opts = {}
-   for k, v in pairs(opts) do
-      if k ~= "filters" and k ~= "runtime" and k ~= "engine_name" then
-         compare_opts[k] = v
-      end
-   end
+   local compare_opts = build_compare_opts(opts)
+   local run_spec = opts.runtime and run_spec_subprocess or run_spec_inprocess
 
    local all_results = {}
 
@@ -218,84 +318,26 @@ function M.run(bench_files, targets, opts)
    bar:start()
    local pos = 0
 
-   for i = 1, #file_info do
-      local info = file_info[i]
-      local rel_path = info.rel_path
-      local loaded = info.loaded
-      local spec_names = info.spec_names
-
-      if #loaded > 0 then
-         for si = 1, #spec_names do
-            local spec_name = spec_names[si]
-            local bench_id = loader.bench_id(rel_path, spec_name)
-            if opts.runtime then
-               -- Subprocess execution path
-               local spec_targets = {}
-               for j = 1, #loaded do
-                  if loaded[j].result[spec_name] then
-                     spec_targets[#spec_targets + 1] = {
-                        path = loaded[j].path,
-                        name = loaded[j].name,
-                     }
-                  end
-               end
-               if #spec_targets > 0 then
-                  local engine_name = opts.engine_name
-                  local err_label = engine_name and "engine error" or "subprocess error"
-                  local results = run_with_output(bench_id, bar, function()
-                     if engine_name then
-                        local adapter = engines.get_adapter(engine_name)
-                        return adapter.run(
-                           opts.runtime,
-                           info.bench_file,
-                           spec_targets,
-                           spec_name,
-                           compare_opts
-                        )
-                     end
-                     return subprocess.run_subprocess(
-                        opts.runtime,
-                        info.bench_file,
-                        spec_targets,
-                        spec_name,
-                        compare_opts
-                     )
-                  end, err_label)
-                  pos = pos + 1
-                  bar:update(pos, bench_id)
-                  if results then
-                     all_results[#all_results + 1] = make_result_entry(rel_path, spec_name, results)
-                  end
-               end
-            else
-               -- In-process execution path
-               local funcs = {}
-               for j = 1, #loaded do
-                  local entry = loaded[j]
-                  if entry.result[spec_name] then
-                     funcs[entry.name] = entry.result[spec_name]
-                  end
-               end
-               if next(funcs) then
-                  local results = run_with_output(bench_id, bar, function()
-                     local ok, res = pcall(luamark.compare_time, funcs, compare_opts)
-                     if not ok then
-                        return nil, res
-                     end
-                     return res
-                  end, "benchmark error")
-                  pos = pos + 1
-                  bar:update(pos, bench_id)
-                  if results then
-                     all_results[#all_results + 1] = make_result_entry(rel_path, spec_name, results)
-                  end
-               end
+   local loop_ok, loop_err = pcall(function()
+      for i = 1, #file_info do
+         local info = file_info[i]
+         for si = 1, #info.spec_names do
+            local spec_name = info.spec_names[si]
+            local bench_id = loader.bench_id(info.rel_path, spec_name)
+            local entry = run_spec(bench_id, bar, info, spec_name, opts, compare_opts)
+            pos = pos + 1
+            bar:update(pos, bench_id)
+            if entry then
+               all_results[#all_results + 1] = entry
             end
          end
       end
-   end
+   end)
 
    bar:stop()
+   if not loop_ok then
+      error(loop_err, 0)
+   end
    return all_results
 end
 

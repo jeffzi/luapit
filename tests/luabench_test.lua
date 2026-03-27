@@ -23,16 +23,14 @@ describe("luabench", function()
       assert.is_function(parser.pparse)
    end)
 
-   -- Parser tests for new CLI structure
-
    it("parsing ref with positional targets succeeds", function()
       local parser = luabench.build_parser()
 
-      local ok, args = parser:pparse({ "ref", ".#main", ".#dev" })
+      local ok, args = parser:pparse({ "ref", ".#main", ".#dev", "/tmp/mylib" })
 
       assert.is_true(ok)
       assert.are_equal("ref", args.command)
-      assert.are_same({ ".#main", ".#dev" }, args.targets)
+      assert.are_same({ ".#main", ".#dev", "/tmp/mylib" }, args.targets)
    end)
 
    it("parsing ref with -b flag produces bench list", function()
@@ -60,15 +58,6 @@ describe("luabench", function()
       assert.is_false(ok)
    end)
 
-   it("parsing ref with multiple targets parses all", function()
-      local parser = luabench.build_parser()
-
-      local ok, args = parser:pparse({ "ref", ".#main", ".#dev", "/tmp/mylib" })
-
-      assert.is_true(ok)
-      assert.are_same({ ".#main", ".#dev", "/tmp/mylib" }, args.targets)
-   end)
-
    it("parsing ref with multiple --filter values produces table", function()
       local parser = luabench.build_parser()
 
@@ -85,8 +74,6 @@ describe("luabench", function()
 
       assert.is_false(ok)
    end)
-
-   -- Integration: discover -> runner pipeline
 
    it("discover feeds bench files into runner for full pipeline", function()
       local discover_mod = require("luabench.discover")
@@ -110,7 +97,6 @@ describe("luabench", function()
       local original_write = io.write
       io.write = function() end -- luacheck: ignore 122
 
-      -- Simulate the pipeline: discover -> run
       local bench_files = discover_mod.discover({
          FIXTURE_DIR .. "/benchmarks/sort_bench.lua",
       })
@@ -128,11 +114,17 @@ describe("luabench", function()
       assert.is_not_nil(compare_args["libv2"])
    end)
 
-   -- main() integration tests
+   local DEFAULT_RESOLVED = {
+      { path = LIBV1_DIR, name = "libv1", cleanup = false },
+   }
 
    --- Stub helper for main() tests that mock resolve, discover, runner, etc.
+   --- Installs happy-path defaults; individual tests override only what they need.
+   --- @param overrides? table Optional table of module function overrides.
    --- @return table stubs Table of stub state + originals for teardown.
-   local function setup_main_stubs()
+   local function setup_main_stubs(overrides)
+      overrides = overrides or {}
+
       local resolve_mod = require("luabench.resolve")
       local discover_mod = require("luabench.discover")
       local runner_mod = require("luabench.runner")
@@ -149,17 +141,32 @@ describe("luabench", function()
          write = io.write,
       }
 
-      local state = {
-         resolve_called_with = nil,
-         cleanup_called_with = nil,
-         discover_called_with = nil,
-         run_called_with = nil,
-         write_json_called_with = nil,
-         exit_code = nil,
-      }
+      local state = {}
 
       io.stderr = io.tmpfile()
       io.write = function() end -- luacheck: ignore 122
+
+      -- Happy-path defaults (tests override via overrides table)
+      resolve_mod.resolve_targets = overrides.resolve_targets
+         or function()
+            return DEFAULT_RESOLVED
+         end
+      resolve_mod.cleanup = overrides.cleanup or function() end
+      discover_mod.discover = overrides.discover
+         or function()
+            return { "bench1.lua" }
+         end
+      runner_mod.run = overrides.run or function()
+         return {}
+      end
+
+      if overrides.write_json then
+         export_mod.write_json = overrides.write_json
+      end
+
+      if overrides.exit then
+         os.exit = overrides.exit -- luacheck: ignore 122
+      end
 
       local function teardown()
          resolve_mod.resolve_targets = originals.resolve_targets
@@ -182,32 +189,19 @@ describe("luabench", function()
 
       return {
          state = state,
-         originals = originals,
-         resolve_mod = resolve_mod,
-         discover_mod = discover_mod,
-         runner_mod = runner_mod,
-         export_mod = export_mod,
          teardown = teardown,
          read_stderr = read_stderr,
       }
    end
 
    it("main calls resolve_targets with positional targets", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function(specs)
-         s.state.resolve_called_with = specs
-         return {
-            { path = LIBV1_DIR, name = "libv1", cleanup = false },
-         }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         return {}
-      end
+      local s
+      s = setup_main_stubs({
+         resolve_targets = function(specs)
+            s.state.resolve_called_with = specs
+            return DEFAULT_RESOLVED
+         end,
+      })
 
       luabench.main({ "ref", ".#main", ".#dev" })
 
@@ -217,53 +211,40 @@ describe("luabench", function()
    end)
 
    it("main calls cleanup after run completes", function()
-      local s = setup_main_stubs()
-      local resolved = {
-         { path = LIBV1_DIR, name = "libv1", cleanup = false },
-      }
-
-      s.resolve_mod.resolve_targets = function()
-         return resolved
-      end
-      s.resolve_mod.cleanup = function(targets)
-         s.state.cleanup_called_with = targets
-      end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         return {}
-      end
+      local s
+      s = setup_main_stubs({
+         cleanup = function(targets)
+            s.state.cleanup_called_with = targets
+         end,
+      })
 
       luabench.main({ "ref", ".#main" })
 
       s.teardown()
 
-      assert.are_same(resolved, s.state.cleanup_called_with)
+      assert.are_same(DEFAULT_RESOLVED, s.state.cleanup_called_with)
    end)
 
    it("main calls cleanup even when runner errors", function()
-      local s = setup_main_stubs()
       local resolved = {
          { path = LIBV1_DIR, name = "libv1", cleanup = true },
       }
-
-      s.resolve_mod.resolve_targets = function()
-         return resolved
-      end
-      s.resolve_mod.cleanup = function(targets)
-         s.state.cleanup_called_with = targets
-      end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         error("runner failed")
-      end
-      os.exit = function(code) -- luacheck: ignore 122
-         s.state.exit_code = code
-         error("EXIT")
-      end
+      local s
+      s = setup_main_stubs({
+         resolve_targets = function()
+            return resolved
+         end,
+         cleanup = function(targets)
+            s.state.cleanup_called_with = targets
+         end,
+         run = function()
+            error("runner failed")
+         end,
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
 
       pcall(luabench.main, { "ref", ".#main" })
 
@@ -274,21 +255,13 @@ describe("luabench", function()
    end)
 
    it("main defaults bench paths to cwd when -b omitted", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return {
-            { path = LIBV1_DIR, name = "libv1", cleanup = false },
-         }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function(paths)
-         s.state.discover_called_with = paths
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         return {}
-      end
+      local s
+      s = setup_main_stubs({
+         discover = function(paths)
+            s.state.discover_called_with = paths
+            return { "bench1.lua" }
+         end,
+      })
 
       luabench.main({ "ref", ".#main" })
 
@@ -298,21 +271,13 @@ describe("luabench", function()
    end)
 
    it("main uses -b paths for discover", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return {
-            { path = LIBV1_DIR, name = "libv1", cleanup = false },
-         }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function(paths)
-         s.state.discover_called_with = paths
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         return {}
-      end
+      local s
+      s = setup_main_stubs({
+         discover = function(paths)
+            s.state.discover_called_with = paths
+            return { "bench1.lua" }
+         end,
+      })
 
       luabench.main({ "ref", ".#main", "-b", "benchmarks/", "-b", "tests/" })
 
@@ -322,15 +287,16 @@ describe("luabench", function()
    end)
 
    it("main exits 1 when resolve_targets fails", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return nil, "invalid target: bad"
-      end
-      os.exit = function(code) -- luacheck: ignore 122
-         s.state.exit_code = code
-         error("EXIT")
-      end
+      local s
+      s = setup_main_stubs({
+         resolve_targets = function()
+            return nil, "invalid target: bad"
+         end,
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
 
       pcall(luabench.main, { "ref", "bad" })
 
@@ -342,24 +308,19 @@ describe("luabench", function()
    end)
 
    it("main exits 1 when no benchmark files found", function()
-      local s = setup_main_stubs()
-      local resolved = {
-         { path = LIBV1_DIR, name = "libv1", cleanup = false },
-      }
-
-      s.resolve_mod.resolve_targets = function()
-         return resolved
-      end
-      s.resolve_mod.cleanup = function(targets)
-         s.state.cleanup_called_with = targets
-      end
-      s.discover_mod.discover = function()
-         return {}
-      end
-      os.exit = function(code) -- luacheck: ignore 122
-         s.state.exit_code = code
-         error("EXIT")
-      end
+      local s
+      s = setup_main_stubs({
+         cleanup = function(targets)
+            s.state.cleanup_called_with = targets
+         end,
+         discover = function()
+            return {}
+         end,
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
 
       pcall(luabench.main, { "ref", ".#main" })
 
@@ -368,28 +329,27 @@ describe("luabench", function()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("no benchmark files found", stderr_output)
-      -- cleanup should still be called even when no benchmarks found
-      assert.are_same(resolved, s.state.cleanup_called_with)
+      assert.are_same(DEFAULT_RESOLVED, s.state.cleanup_called_with)
    end)
 
    it("main passes bench_files and resolved targets to runner.run", function()
-      local s = setup_main_stubs()
       local resolved = {
          { path = LIBV1_DIR, name = "libv1", cleanup = false },
          { path = LIBV2_DIR, name = "libv2", cleanup = false },
       }
-
-      s.resolve_mod.resolve_targets = function()
-         return resolved
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua", "bench2.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
+      local s
+      s = setup_main_stubs({
+         resolve_targets = function()
+            return resolved
+         end,
+         discover = function()
+            return { "bench1.lua", "bench2.lua" }
+         end,
+         run = function(files, targets, opts)
+            s.state.run_called_with = { files = files, targets = targets, opts = opts }
+            return {}
+         end,
+      })
 
       luabench.main({ "ref", ".#main", ".#dev" })
 
@@ -399,24 +359,15 @@ describe("luabench", function()
       assert.are_same(resolved, s.state.run_called_with.targets)
    end)
 
-   -- parse_params tests
+   it("_parse_params coerces numbers booleans and passes strings through", function()
+      local params = luabench._parse_params({ "n:1000", "flag:true", "other:false", "name:hello" })
 
-   it("_parse_params with number value coerces to number", function()
-      local params = luabench._parse_params({ "n:1000" })
-
-      assert.are_same({ n = { 1000 } }, params)
-   end)
-
-   it("_parse_params with boolean values coerces to boolean", function()
-      local params = luabench._parse_params({ "flag:true", "other:false" })
-
-      assert.are_same({ flag = { true }, other = { false } }, params)
-   end)
-
-   it("_parse_params with string value passes through", function()
-      local params = luabench._parse_params({ "name:hello" })
-
-      assert.are_same({ name = { "hello" } }, params)
+      assert.are_same({
+         n = { 1000 },
+         flag = { true },
+         other = { false },
+         name = { "hello" },
+      }, params)
    end)
 
    it("_parse_params with repeated name accumulates values", function()
@@ -432,157 +383,72 @@ describe("luabench", function()
       assert.matches("invalid parameter format", err)
    end)
 
-   -- CLI flag wiring tests
+   --- Helper: setup stubs with a run spy that captures args, call main, teardown.
+   --- @param cli_args table CLI arguments to pass to main.
+   --- @return table opts The opts table passed to runner.run.
+   local function run_main_capturing_opts(cli_args)
+      local captured_opts
+      local s = setup_main_stubs({
+         run = function(_, _, opts)
+            captured_opts = opts
+            return {}
+         end,
+      })
 
-   it("main with -t flag passes opts.rounds=1 to runner.run", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "-t" })
-
+      luabench.main(cli_args)
       s.teardown()
 
-      assert.are_equal(1, s.state.run_called_with.opts.rounds)
+      return captured_opts
+   end
+
+   it("main with -t flag passes opts.rounds=1 to runner.run", function()
+      local opts = run_main_capturing_opts({ "ref", ".#main", "-t" })
+
+      assert.are_equal(1, opts.rounds)
    end)
 
    it("main with --filter passes opts.filters to runner.run", function()
-      local s = setup_main_stubs()
+      local opts = run_main_capturing_opts({ "ref", ".#main", "--filter", "sort" })
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "--filter", "sort" })
-
-      s.teardown()
-
-      assert.are_same({ "sort" }, s.state.run_called_with.opts.filters)
+      assert.are_same({ "sort" }, opts.filters)
    end)
 
    it("main with multiple --filter values passes all to opts.filters", function()
-      local s = setup_main_stubs()
+      local opts =
+         run_main_capturing_opts({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
-
-      s.teardown()
-
-      assert.are_same({ "sort", "hash" }, s.state.run_called_with.opts.filters)
+      assert.are_same({ "sort", "hash" }, opts.filters)
    end)
 
    it("main with -p passes opts.params to runner.run", function()
-      local s = setup_main_stubs()
+      local opts = run_main_capturing_opts({ "ref", ".#main", "-p", "n:1000" })
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "-p", "n:1000" })
-
-      s.teardown()
-
-      assert.are_same({ n = { 1000 } }, s.state.run_called_with.opts.params)
+      assert.are_same({ n = { 1000 } }, opts.params)
    end)
 
    it("main with combined flags passes combined opts", function()
-      local s = setup_main_stubs()
+      local opts =
+         run_main_capturing_opts({ "ref", ".#main", "-t", "--filter", "sort", "-p", "n:100" })
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "-t", "--filter", "sort", "-p", "n:100" })
-
-      s.teardown()
-
-      local opts = s.state.run_called_with.opts
       assert.are_equal(1, opts.rounds)
       assert.are_same({ "sort" }, opts.filters)
       assert.are_same({ n = { 100 } }, opts.params)
    end)
 
    it("main without -t --filter -p passes empty opts to runner.run", function()
-      local s = setup_main_stubs()
+      local opts = run_main_capturing_opts({ "ref", ".#main" })
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main" })
-
-      s.teardown()
-
-      assert.are_same({}, s.state.run_called_with.opts)
+      assert.are_same({}, opts)
    end)
 
    it("main with invalid -p format exits 1 with error", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      os.exit = function(code) -- luacheck: ignore 122
-         s.state.exit_code = code
-         error("EXIT")
-      end
+      local s
+      s = setup_main_stubs({
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
 
       pcall(luabench.main, { "ref", ".#main", "-p", "bad" })
 
@@ -593,40 +459,29 @@ describe("luabench", function()
       assert.matches("invalid parameter format", stderr_output)
    end)
 
-   -- Export wiring tests
-
    it("_VERSION is 0.5.0", function()
       assert.are_equal("0.5.0", luabench._VERSION)
    end)
 
    it("main calls export.write_json when -o is specified", function()
-      local s = setup_main_stubs()
-      local resolved = {
-         { path = LIBV1_DIR, name = "libv1", cleanup = false },
-      }
       local run_results = {
          { file = "bench/sort", spec = "default", targets = {} },
       }
-
-      s.resolve_mod.resolve_targets = function()
-         return resolved
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         return run_results
-      end
-      s.export_mod.write_json = function(filepath, results, targets, version)
-         s.state.write_json_called_with = {
-            filepath = filepath,
-            results = results,
-            targets = targets,
-            version = version,
-         }
-         return true
-      end
+      local s
+      s = setup_main_stubs({
+         run = function()
+            return run_results
+         end,
+         write_json = function(filepath, results, targets, version)
+            s.state.write_json_called_with = {
+               filepath = filepath,
+               results = results,
+               targets = targets,
+               version = version,
+            }
+            return true
+         end,
+      })
 
       luabench.main({ "ref", ".#main", "-o", "/tmp/test_output.json" })
 
@@ -635,190 +490,121 @@ describe("luabench", function()
       assert.is_not_nil(s.state.write_json_called_with)
       assert.are_equal("/tmp/test_output.json", s.state.write_json_called_with.filepath)
       assert.are_same(run_results, s.state.write_json_called_with.results)
-      assert.are_same(resolved, s.state.write_json_called_with.targets)
+      assert.are_same(DEFAULT_RESOLVED, s.state.write_json_called_with.targets)
       assert.are_equal("0.5.0", s.state.write_json_called_with.version)
    end)
 
    it("main does not call export.write_json when -o is omitted", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return {
-            { path = LIBV1_DIR, name = "libv1", cleanup = false },
-         }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         return {}
-      end
-      s.export_mod.write_json = function(filepath, results, targets, version)
-         s.state.write_json_called_with = {
-            filepath = filepath,
-            results = results,
-            targets = targets,
-            version = version,
-         }
-         return true
-      end
+      local s
+      s = setup_main_stubs({
+         write_json = function()
+            s.state.write_json_called = true
+            return true
+         end,
+      })
 
       luabench.main({ "ref", ".#main" })
 
       s.teardown()
 
-      assert.is_nil(s.state.write_json_called_with)
+      assert.is_nil(s.state.write_json_called)
    end)
 
-   -- -R runtime selection tests
+   --- Helper: stub subprocess.resolve_runtime for -R tests, returning restore fn.
+   local function stub_subprocess_runtime(fake_resolve)
+      local subprocess_mod = require("luabench.subprocess")
+      local original = subprocess_mod.resolve_runtime
+      subprocess_mod.resolve_runtime = fake_resolve
+      return function()
+         subprocess_mod.resolve_runtime = original
+      end
+   end
 
    it("main with -R calls subprocess.resolve_runtime and sets opts.runtime", function()
-      local s = setup_main_stubs()
-      local subprocess_mod = require("luabench.subprocess")
-      local original_resolve = subprocess_mod.resolve_runtime
-
-      subprocess_mod.resolve_runtime = function(name)
+      local restore = stub_subprocess_runtime(function(name)
          return "/usr/local/bin/" .. name
-      end
+      end)
+      local opts = run_main_capturing_opts({ "ref", ".#main", "-R", "luajit" })
+      restore()
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "-R", "luajit" })
-
-      subprocess_mod.resolve_runtime = original_resolve
-      s.teardown()
-
-      assert.are_equal("/usr/local/bin/luajit", s.state.run_called_with.opts.runtime)
+      assert.are_equal("/usr/local/bin/luajit", opts.runtime)
    end)
 
    it("main with -R and invalid runtime exits 1 with error", function()
-      local s = setup_main_stubs()
-      local subprocess_mod = require("luabench.subprocess")
-      local original_resolve = subprocess_mod.resolve_runtime
-
-      subprocess_mod.resolve_runtime = function()
+      local restore = stub_subprocess_runtime(function()
          return nil, 'runtime not found: "bad_runtime"'
-      end
-
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      os.exit = function(code) -- luacheck: ignore 122
-         s.state.exit_code = code
-         error("EXIT")
-      end
+      end)
+      local s
+      s = setup_main_stubs({
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
 
       pcall(luabench.main, { "ref", ".#main", "-R", "bad_runtime" })
 
       local stderr_output = s.read_stderr()
-      subprocess_mod.resolve_runtime = original_resolve
+      restore()
       s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("runtime not found", stderr_output)
    end)
 
-   it("main without -R does not set opts.runtime", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main" })
-
-      s.teardown()
-
-      assert.is_nil(s.state.run_called_with.opts.runtime)
-   end)
-
    it("main with -R -t combines runtime and test mode", function()
-      local s = setup_main_stubs()
-      local subprocess_mod = require("luabench.subprocess")
-      local original_resolve = subprocess_mod.resolve_runtime
-
-      subprocess_mod.resolve_runtime = function(name)
+      local restore = stub_subprocess_runtime(function(name)
          return "/usr/bin/" .. name
-      end
+      end)
+      local opts = run_main_capturing_opts({ "ref", ".#main", "-R", "luajit", "-t" })
+      restore()
 
-      s.resolve_mod.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "libv1", cleanup = false } }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function(files, targets, opts)
-         s.state.run_called_with = { files = files, targets = targets, opts = opts }
-         return {}
-      end
-
-      luabench.main({ "ref", ".#main", "-R", "luajit", "-t" })
-
-      subprocess_mod.resolve_runtime = original_resolve
-      s.teardown()
-
-      assert.are_equal("/usr/bin/luajit", s.state.run_called_with.opts.runtime)
-      assert.are_equal(1, s.state.run_called_with.opts.rounds)
+      assert.are_equal("/usr/bin/luajit", opts.runtime)
+      assert.are_equal(1, opts.rounds)
    end)
 
    it("main does not call export.write_json when runner errors", function()
-      local s = setup_main_stubs()
-
-      s.resolve_mod.resolve_targets = function()
-         return {
-            { path = LIBV1_DIR, name = "libv1", cleanup = false },
-         }
-      end
-      s.resolve_mod.cleanup = function() end
-      s.discover_mod.discover = function()
-         return { "bench1.lua" }
-      end
-      s.runner_mod.run = function()
-         error("runner failed")
-      end
-      s.export_mod.write_json = function(filepath, results, targets, version)
-         s.state.write_json_called_with = {
-            filepath = filepath,
-            results = results,
-            targets = targets,
-            version = version,
-         }
-         return true
-      end
-      os.exit = function(code) -- luacheck: ignore 122
-         s.state.exit_code = code
-         error("EXIT")
-      end
+      local s
+      s = setup_main_stubs({
+         run = function()
+            error("runner failed")
+         end,
+         write_json = function()
+            s.state.write_json_called = true
+            return true
+         end,
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
 
       pcall(luabench.main, { "ref", ".#main", "-o", "/tmp/out.json" })
 
       s.teardown()
 
-      assert.is_nil(s.state.write_json_called_with)
+      assert.is_nil(s.state.write_json_called)
       assert.are_equal(1, s.state.exit_code)
+   end)
+
+   it("main when runner raises interrupt error exits 130 silently", function()
+      local s
+      s = setup_main_stubs({
+         run = function()
+            error("interrupted")
+         end,
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
+
+      pcall(luabench.main, { "ref", ".#main" })
+
+      local stderr_output = s.read_stderr()
+      s.teardown()
+
+      assert.are_equal(130, s.state.exit_code)
+      assert.are_equal("", stderr_output)
    end)
 end)

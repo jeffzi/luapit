@@ -10,6 +10,13 @@ local M = {}
 
 M._VERSION = "0.5.0"
 
+--- Write an error message to stderr and exit with code 1.
+--- @param msg string|nil Error message (without prefix or newline).
+local function die(msg)
+   io.stderr:write("luabench: " .. tostring(msg) .. "\n")
+   os.exit(1)
+end
+
 --- Parse raw parameter strings into a typed params table.
 --- @param raw_params string[] Array of "NAME:VALUE" strings.
 --- @return table<string, any[]>|nil params Parsed params, or nil on error.
@@ -70,9 +77,9 @@ function M.main(argv)
       -- Resolve targets (fail fast on error)
       local targets, err = resolve.resolve_targets(args.targets)
       if not targets then
-         io.stderr:write("luabench: " .. err .. "\n")
-         os.exit(1)
+         die(err)
       end
+      ---@cast targets -nil
 
       -- Discover benchmarks (default to cwd)
       local bench_paths = args.bench
@@ -82,8 +89,7 @@ function M.main(argv)
       local bench_files = discover.discover(bench_paths)
       if #bench_files == 0 then
          resolve.cleanup(targets)
-         io.stderr:write("luabench: no benchmark files found\n")
-         os.exit(1)
+         die("no benchmark files found")
       end
 
       -- Build opts from CLI flags
@@ -98,8 +104,7 @@ function M.main(argv)
          local params, param_err = parse_params(args.param)
          if not params then
             resolve.cleanup(targets)
-            io.stderr:write("luabench: " .. param_err .. "\n")
-            os.exit(1)
+            die(param_err)
          end
          opts.params = params
       end
@@ -114,8 +119,7 @@ function M.main(argv)
          local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
          if not runtime_path then
             resolve.cleanup(targets)
-            io.stderr:write("luabench: " .. runtime_err .. "\n")
-            os.exit(1)
+            die(runtime_err)
          end
          opts.runtime = runtime_path
          if engine_name then
@@ -127,15 +131,17 @@ function M.main(argv)
       local run_ok, run_result = pcall(runner.run, bench_files, targets, opts)
       resolve.cleanup(targets)
       if not run_ok then
-         io.stderr:write("luabench: benchmark error: " .. tostring(run_result) .. "\n")
-         os.exit(1)
+         local msg = tostring(run_result)
+         if msg:find("interrupted") then
+            os.exit(130)
+         end
+         die("benchmark error: " .. msg)
       end
 
       if args.output then
          local ok, write_err = export.write_json(args.output, run_result, targets, M._VERSION)
          if not ok then
-            io.stderr:write("luabench: failed to write JSON: " .. tostring(write_err) .. "\n")
-            os.exit(1)
+            die("failed to write JSON: " .. tostring(write_err))
          end
       end
    end
