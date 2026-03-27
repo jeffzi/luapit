@@ -67,6 +67,7 @@ function M.build_parser()
       "--prepare",
       "Shell command to run in each cloned target directory before benchmarking."
    )
+   ref:option("--lua-path", "Subdirectory within each target to add to package.path."):count("*")
 
    return parser
 end
@@ -125,6 +126,13 @@ function M.main(argv)
             cleanup_and_die(param_err)
          end
          opts.params = params
+      end
+      if args.lua_path and #args.lua_path > 0 then
+         local paths = {}
+         for i = 1, #args.lua_path do
+            paths[i] = args.lua_path[i]:gsub("/+$", "")
+         end
+         opts.lua_path = paths
       end
 
       -- Resolve runtime if -R specified (fail fast on error)

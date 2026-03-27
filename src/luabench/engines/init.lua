@@ -1,4 +1,5 @@
 local path = require("pl.path")
+local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
 local quote_arg = utils.quote_arg
@@ -68,13 +69,13 @@ function M.find_command(cmd)
    if not h then
       return nil
    end
-   local ok, result = pcall(h.read, h, "*a")
+   local result = h:read("*a")
    h:close()
-   if not ok or not result then
+   if not result then
       return nil
    end
    result = result:match("^(.-)%s*$")
-   if result and result ~= "" then
+   if result ~= "" then
       return result
    end
 end
@@ -103,8 +104,7 @@ function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
    parts[#parts + 1] = "         local original_path = package.path"
    parts[#parts + 1] = "         local snap = {}"
    parts[#parts + 1] = "         for k in pairs(package.loaded) do snap[k] = true end"
-   parts[#parts + 1] =
-      '         package.path = t.path .. "/?.lua;" .. t.path .. "/?/init.lua;" .. original_path'
+   parts[#parts + 1] = subprocess._build_path_line(opts.lua_path, "         ")
    parts[#parts + 1] = string.format("         local bench = dofile(%q)", bench_file)
    parts[#parts + 1] = "         if bench.fn ~= nil then bench = { [''] = bench } end"
    parts[#parts + 1] = string.format("         local spec = bench[%q]", spec_name)

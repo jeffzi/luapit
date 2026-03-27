@@ -53,16 +53,17 @@ LuaBench provides one command: `ref`.
 luabench ref <targets...> [options]
 ```
 
-| Option                   | Description                                                         | Default                 |
-| ------------------------ | ------------------------------------------------------------------- | ----------------------- |
-| `<targets>`              | One or more target specifiers (positional, required).               |                         |
-| `-b, --bench <path>`     | Benchmark files or directories (repeatable).                        | `.` (current directory) |
-| `-R, --runtime <name>`   | Run benchmarks under a different Lua runtime.                       | same process            |
-| `-o, --output <path>`    | Write results to a JSON file.                                       |                         |
-| `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test.        | off                     |
-| `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                           |                         |
-| `--filter <pattern>`     | Filter benchmarks by Lua pattern (repeatable, OR logic).            | none (run all)          |
-| `--prepare <cmd>`        | Shell command to run in each cloned target dir before benchmarking. | none                    |
+| Option                   | Description                                                            | Default                 |
+| ------------------------ | ---------------------------------------------------------------------- | ----------------------- |
+| `<targets>`              | One or more target specifiers (positional, required).                  |                         |
+| `-b, --bench <path>`     | Benchmark files or directories (repeatable).                           | `.` (current directory) |
+| `-R, --runtime <name>`   | Run benchmarks under a different Lua runtime.                          | same process            |
+| `-o, --output <path>`    | Write results to a JSON file.                                          |                         |
+| `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test.           | off                     |
+| `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                              |                         |
+| `--filter <pattern>`     | Filter benchmarks by Lua pattern (repeatable, OR logic).               | none (run all)          |
+| `--prepare <cmd>`        | Shell command to run in each cloned target dir before benchmarking.    | none                    |
+| `--lua-path <subdir>`    | Subdirectory within each target to add to `package.path` (repeatable). | target root             |
 
 ### Target specifiers
 
@@ -105,6 +106,28 @@ tree (`.`) and local directory targets are used as-is.
 If the command fails for a target, LuaBench prints a warning, removes that target, and
 continues with the remaining targets. Output from the command streams directly to the
 terminal so build errors are visible.
+
+### Custom Lua path
+
+By default, LuaBench prepends each target's root directory to `package.path`. If your
+project's Lua files live in a subdirectory (common with compile-to-Lua toolchains),
+use `--lua-path` to tell LuaBench where to look instead.
+
+```sh
+# Transpiled Lua output lives in lua/ within each target
+luabench ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
+   --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
+```
+
+`--lua-path` replaces the default root entry. To include both the root and a
+subdirectory, pass both:
+
+```sh
+luabench ref .#main -b bench/ --lua-path . --lua-path lua
+```
+
+Each path is relative to the target directory, so multi-ref comparisons work correctly
+— each cloned ref resolves `require` calls against its own copy of the subdirectory.
 
 ### Benchmark files
 
@@ -155,9 +178,10 @@ Each spec is a LuaMark spec table. Beyond `fn`, you can use:
   baseline, ratios are relative to the fastest spec.
 
 **Target isolation.** For each target, LuaBench prepends the target's directory to
-`package.path` before loading the benchmark. When you write `require("mylib")`, it
-resolves against that target's code. `package.loaded` is restored between targets so
-modules do not leak across versions.
+`package.path` before loading the benchmark (or the subdirectories specified by
+`--lua-path`). When you write `require("mylib")`, it resolves against that target's
+code. `package.loaded` is restored between targets so modules do not leak across
+versions.
 
 ### Filtering benchmarks
 

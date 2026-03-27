@@ -98,6 +98,54 @@ describe("runner", function()
       assert.are_equal(2, v2_result)
    end)
 
+   it("with_target with lua_paths resolves modules from subdirectory", function()
+      local LIB_SUB_DIR = FIXTURE_DIR .. "/targets/lib_sub"
+
+      local result
+      runner.with_target(LIB_SUB_DIR, function()
+         result = require("mylib").value()
+      end, { "sub" })
+
+      assert.are_equal(3, result)
+   end)
+
+   it("with_target with lua_paths dot behaves like default", function()
+      local captured_path
+      runner.with_target(LIBV1_DIR, function()
+         captured_path = package.path
+      end, { "." })
+
+      assert.matches(LIBV1_DIR .. "/%?%.lua", captured_path)
+      assert.matches(LIBV1_DIR .. "/%?/init%.lua", captured_path)
+   end)
+
+   it("with_target with multiple lua_paths prepends all", function()
+      local captured_path
+      runner.with_target(LIBV1_DIR, function()
+         captured_path = package.path
+      end, { "a", "b" })
+
+      local a_pos = captured_path:find(LIBV1_DIR .. "/a/?.lua", 1, true)
+      local b_pos = captured_path:find(LIBV1_DIR .. "/b/?.lua", 1, true)
+      assert.is_not_nil(a_pos)
+      assert.is_not_nil(b_pos)
+      assert.is_true(a_pos < b_pos)
+   end)
+
+   it("with_target without lua_paths preserves current behavior", function()
+      local captured_with_nil
+      runner.with_target(LIBV1_DIR, function()
+         captured_with_nil = package.path
+      end)
+
+      local captured_without
+      runner.with_target(LIBV1_DIR, function()
+         captured_without = package.path
+      end, nil)
+
+      assert.are_equal(captured_with_nil, captured_without)
+   end)
+
    --- Set up luamark and io stubs for run() tests.
    --- @return table spy_state, fun() teardown, fun() read_stderr
    local function setup_run_stubs()
@@ -630,30 +678,6 @@ describe("runner", function()
       assert.matches("interrupted", tostring(err))
    end)
 
-   it("run resumes progress bar before propagating interrupt error", function()
-      local _, teardown = setup_run_stubs()
-      local luamark = require("luamark")
-      luamark.compare_time = function()
-         error("interrupted!")
-      end
-
-      local resume_called = false
-      local restore, fresh_runner = stub_progress(function()
-         return noop_bar({
-            resume = function()
-               resume_called = true
-            end,
-         })
-      end)
-
-      pcall(fresh_runner.run, { SORT_BENCH }, TARGETS_PAIR)
-
-      restore()
-      teardown()
-
-      assert.is_true(resume_called)
-   end)
-
    it("run cleans up progress bar before propagating interrupt error", function()
       local _, teardown = setup_run_stubs()
       local luamark = require("luamark")
@@ -661,9 +685,13 @@ describe("runner", function()
          error("interrupted!")
       end
 
+      local resume_called = false
       local stop_called = false
       local restore, fresh_runner = stub_progress(function()
          return noop_bar({
+            resume = function()
+               resume_called = true
+            end,
             stop = function()
                stop_called = true
             end,
@@ -677,6 +705,7 @@ describe("runner", function()
 
       assert.is_false(ok)
       assert.matches("interrupted", tostring(err))
+      assert.is_true(resume_called)
       assert.is_true(stop_called)
    end)
 end)

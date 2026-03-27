@@ -4,6 +4,26 @@ local M = {}
 
 local quote_arg = utils.quote_arg
 
+--- Build a Lua code expression that sets package.path for a target.
+--- @param lua_paths string[]|nil Subdirectory paths (nil = use target root).
+--- @param indent string Indentation prefix for the generated line.
+--- @return string line Generated Lua code line.
+local function build_path_line(lua_paths, indent)
+   local segs = {}
+   if lua_paths and #lua_paths > 0 then
+      for i = 1, #lua_paths do
+         local sub = lua_paths[i] == "." and "" or ("/" .. lua_paths[i])
+         segs[#segs + 1] = string.format('t.path .. "%s/?.lua"', sub)
+         segs[#segs + 1] = string.format('t.path .. "%s/?/init.lua"', sub)
+      end
+   else
+      segs[#segs + 1] = 't.path .. "/?.lua"'
+      segs[#segs + 1] = 't.path .. "/?/init.lua"'
+   end
+   segs[#segs + 1] = "original_path"
+   return indent .. "package.path = " .. table.concat(segs, ' .. ";" .. ')
+end
+
 --- Resolve a runtime name or path to an absolute path.
 --- @param name_or_path string Runtime name (e.g. "luajit") or path (e.g. "/usr/bin/lua").
 --- @return string|nil path Resolved absolute path, or nil on failure.
@@ -19,8 +39,12 @@ local function resolve_runtime(name_or_path)
    end
    local result = h:read("*a")
    h:close()
+   if not result then
+      return nil,
+         string.format("runtime not found: %q (not in PATH and not a valid path)", name_or_path)
+   end
    result = result:match("^(.-)%s*$")
-   if not result or result == "" then
+   if result == "" then
       return nil,
          string.format("runtime not found: %q (not in PATH and not a valid path)", name_or_path)
    end
@@ -60,8 +84,7 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
    parts[#parts + 1] = "   local original_path = package.path"
    parts[#parts + 1] = "   local snap = {}"
    parts[#parts + 1] = "   for k in pairs(package.loaded) do snap[k] = true end"
-   parts[#parts + 1] =
-      '   package.path = t.path .. "/?.lua;" .. t.path .. "/?/init.lua;" .. original_path'
+   parts[#parts + 1] = build_path_line(opts.lua_path, "   ")
    parts[#parts + 1] = string.format("   local bench = dofile(%q)", bench_file)
    parts[#parts + 1] = "   if bench.fn ~= nil then bench = { [''] = bench } end"
    parts[#parts + 1] = string.format("   local spec = bench[%q]", spec_name)
@@ -131,13 +154,17 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    os.remove(wrapper_base)
    os.remove(result_base)
 
+   local function cleanup()
+      pcall(os.remove, wrapper_path)
+      pcall(os.remove, result_path)
+   end
+
    local wrapper = generate_wrapper(bench_file, targets, spec_name, opts, result_path)
 
    -- Write wrapper to temp file
    local ok, write_err = utils.writefile(wrapper_path, wrapper)
    if not ok then
-      pcall(os.remove, wrapper_path)
-      pcall(os.remove, result_path)
+      cleanup()
       return nil, "failed to create wrapper script: " .. tostring(write_err)
    end
 
@@ -147,8 +174,7 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    ok, _, stdout, stderr = utils.executeex(cmd) -- luacheck: ignore _
 
    if not ok then
-      pcall(os.remove, wrapper_path)
-      pcall(os.remove, result_path)
+      cleanup()
       local output = (stderr or stdout or ""):match("^(.-)%s*$") or ""
       if output ~= "" then
          return nil, "subprocess failed: " .. output
@@ -159,14 +185,11 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    -- Read results
    local content, read_err = utils.readfile(result_path)
    if not content then
-      pcall(os.remove, wrapper_path)
-      pcall(os.remove, result_path)
+      cleanup()
       return nil, "subprocess did not produce results: " .. tostring(read_err)
    end
 
-   -- Cleanup temp files
-   pcall(os.remove, wrapper_path)
-   pcall(os.remove, result_path)
+   cleanup()
 
    -- Parse JSON
    local json = require("dkjson")
@@ -181,5 +204,6 @@ end
 M.resolve_runtime = resolve_runtime
 M.run_subprocess = run_subprocess
 M._generate_wrapper = generate_wrapper
+M._build_path_line = build_path_line
 
 return M

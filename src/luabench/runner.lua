@@ -44,17 +44,37 @@ local function restore_loaded(snap)
    end
 end
 
+--- Build package.path prefix for a target directory with optional subdirectory paths.
+--- @param target_dir string Base directory.
+--- @param lua_paths string[]|nil Subdirectory paths to add (nil = use target root).
+--- @param original_path string Original package.path to append.
+--- @return string path New package.path value.
+local function build_package_path(target_dir, lua_paths, original_path)
+   if not lua_paths or #lua_paths == 0 then
+      return string.format("%s/?.lua;%s/?/init.lua;%s", target_dir, target_dir, original_path)
+   end
+   local segments = {}
+   for i = 1, #lua_paths do
+      local base = lua_paths[i] == "." and target_dir or (target_dir .. "/" .. lua_paths[i])
+      segments[#segments + 1] = base .. "/?.lua"
+      segments[#segments + 1] = base .. "/?/init.lua"
+   end
+   segments[#segments + 1] = original_path
+   return table.concat(segments, ";")
+end
+
 --- Execute fn with package.path prepended for target_dir.
 --- Restores package.path and cleans package.loaded even on error.
 --- @param target_dir string Directory to prepend to package.path.
 --- @param fn fun(): any, any Function to execute in the target context.
+--- @param lua_paths string[]|nil Subdirectory paths within target to add to package.path.
 --- @return any r1 First return of fn on success, or nil on error.
 --- @return any r2 Second return of fn on success, or error message on error.
-function M.with_target(target_dir, fn)
+function M.with_target(target_dir, fn, lua_paths)
    local original_path = package.path
    local snap = snapshot_loaded()
 
-   package.path = string.format("%s/?.lua;%s/?/init.lua;%s", target_dir, target_dir, original_path)
+   package.path = build_package_path(target_dir, lua_paths, original_path)
 
    local ok, r1, r2 = pcall(fn)
 
@@ -119,14 +139,15 @@ end
 --- Load a benchmark file from each target.
 --- @param bench_file string Absolute path to a benchmark file.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
+--- @param lua_paths string[]|nil Subdirectory paths within target to add to package.path.
 --- @return {name: string, path: string, result: table}[]
-local function load_targets(bench_file, targets)
+local function load_targets(bench_file, targets, lua_paths)
    local loaded = {}
    for j = 1, #targets do
       local target = targets[j]
       local result, load_err = M.with_target(target.path, function()
          return loader.load_benchmark(bench_file)
-      end)
+      end, lua_paths)
       if result then
          loaded[#loaded + 1] = {
             name = target.name,
@@ -282,6 +303,7 @@ end
 function M.run(bench_files, targets, opts)
    opts = opts or {}
    local filters = opts.filters
+   local lua_paths = opts.lua_path
    local compare_opts = build_compare_opts(opts)
    local run_spec = opts.runtime and run_spec_subprocess or run_spec_inprocess
 
@@ -293,7 +315,7 @@ function M.run(bench_files, targets, opts)
    for i = 1, #bench_files do
       local bench_file = bench_files[i]
       local rel_path = path.relpath(bench_file)
-      local loaded = load_targets(bench_file, targets)
+      local loaded = load_targets(bench_file, targets, lua_paths)
       local spec_names = {}
       if #loaded > 0 then
          local all_names = collect_spec_names(loaded)

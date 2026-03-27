@@ -169,16 +169,9 @@ describe("resolve", function()
 
    -- exec_ok cross-version wrapper
 
-   it("exec_ok returns true for successful command", function()
-      local ok = resolve._exec_ok("true")
-
-      assert.is_true(ok)
-   end)
-
-   it("exec_ok returns false for failing command", function()
-      local ok = resolve._exec_ok("false")
-
-      assert.is_false(ok)
+   it("exec_ok returns true for success and false for failure", function()
+      assert.is_true(resolve._exec_ok("true"))
+      assert.is_false(resolve._exec_ok("false"))
    end)
 
    -- capture wrapper
@@ -208,76 +201,92 @@ describe("resolve", function()
       assert.are_equal("wt", result.name)
    end)
 
+   --- Run fn with stderr redirected; return captured stderr output.
+   --- Restores io.stderr even if fn raises an error.
+   --- @param fn fun()
+   --- @return string stderr_output
+   local function capture_stderr(fn)
+      local original = io.stderr
+      local tmp = io.tmpfile()
+      io.stderr = tmp
+      local ok, err = pcall(fn)
+      tmp:seek("set")
+      local output = tmp:read("*a")
+      tmp:close()
+      io.stderr = original
+      if not ok then
+         error(err, 0)
+      end
+      return output
+   end
+
+   -- Shared temp directory tracking for clone_repo and prepare_targets tests.
+   local temp_dirs = {}
+
+   after_each(function()
+      for _, dir in ipairs(temp_dirs) do
+         if plpath.isdir(dir) then
+            pldir.rmtree(dir)
+         end
+      end
+      temp_dirs = {}
+   end)
+
    -- clone_repo (integration test with real git)
 
-   it("clone_repo clones a local repo and checks out ref", function()
-      -- Use the current repo as source
+   --- Create a temp path for clone tests and register it for cleanup.
+   --- @param suffix string Descriptive suffix for the temp directory name.
+   --- @return string dest Temp directory path (not yet created).
+   local function make_clone_dest(suffix)
+      local dest = plpath.tmpname() --[[@as string]]
+      os.remove(dest)
+      dest = dest .. "-luabench-" .. suffix
+      temp_dirs[#temp_dirs + 1] = dest
+      return dest
+   end
+
+   --- Return the git toplevel of the current repo, or mark the test pending.
+   --- @return string toplevel Absolute path to the git repo root.
+   local function require_git_repo()
       local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
       if toplevel == nil then
          pending("not inside a git repo")
-         return
       end
+      return toplevel --[[@as string]]
+   end
 
-      local dest = plpath.tmpname()
-      os.remove(dest)
-      dest = dest .. "-luabench-clone-test"
+   it("clone_repo clones a local repo and checks out ref", function()
+      local toplevel = require_git_repo()
+      local dest = make_clone_dest("clone-test")
 
       local ok, err = resolve._clone_repo(toplevel, dest, "main", false)
-
-      -- Clean up
-      if plpath.isdir(dest) then
-         pldir.rmtree(dest)
-      end
 
       assert.is_true(ok, err)
    end)
 
    it("clone_repo returns nil and error when local repo path does not exist", function()
-      local dest = plpath.tmpname()
-      os.remove(dest)
-      dest = dest .. "-luabench-clone-fail"
+      local dest = make_clone_dest("clone-fail")
 
       local ok, err = resolve._clone_repo("/nonexistent/repo", dest, "main", false)
-
-      if plpath.isdir(dest) then
-         pldir.rmtree(dest)
-      end
 
       assert.is_nil(ok)
       assert.matches("failed to clone", err)
    end)
 
    it("clone_repo returns nil and error when ref does not exist", function()
-      local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
-      if toplevel == nil then
-         pending("not inside a git repo")
-         return
-      end
-
-      local dest = plpath.tmpname()
-      os.remove(dest)
-      dest = dest .. "-luabench-badref"
+      local toplevel = require_git_repo()
+      local dest = make_clone_dest("badref")
 
       local ok, err = resolve._clone_repo(toplevel, dest, "nonexistent_ref_xyz_999", false)
-
-      if plpath.isdir(dest) then
-         pldir.rmtree(dest)
-      end
 
       assert.is_nil(ok)
       assert.matches("failed to checkout ref", err)
    end)
 
    it("clone_repo returns nil and error for unreachable remote", function()
-      local dest = plpath.tmpname()
-      os.remove(dest)
-      dest = dest .. "-luabench-remote-fail"
+      local dest = make_clone_dest("remote-fail")
 
       local ok, err = resolve._clone_repo("file:///nonexistent/remote/repo", dest, "main", true)
-
-      if plpath.isdir(dest) then
-         pldir.rmtree(dest)
-      end
 
       assert.is_nil(ok)
       assert.matches("failed to clone", err)
@@ -301,17 +310,11 @@ describe("resolve", function()
    end)
 
    it("cleanup warns on stderr but does not error when removal fails", function()
-      local original_stderr = io.stderr
-      io.stderr = io.tmpfile()
-
-      resolve.cleanup({
-         { path = "/nonexistent/dir/should/not/exist", name = "bad", cleanup = true },
-      })
-
-      io.stderr:seek("set")
-      local stderr_output = io.stderr:read("*a")
-      io.stderr:close()
-      io.stderr = original_stderr
+      local stderr_output = capture_stderr(function()
+         resolve.cleanup({
+            { path = "/nonexistent/dir/should/not/exist", name = "bad", cleanup = true },
+         })
+      end)
 
       -- Should not error (we got here) and may warn
       assert.is_string(stderr_output)
@@ -367,30 +370,19 @@ describe("resolve", function()
    -- resolve_targets with git refs (integration)
 
    it("resolve_targets returns error and cleans up when checkout fails", function()
-      local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
-      if toplevel == nil then
-         pending("not inside a git repo")
-         return
-      end
+      require_git_repo()
 
-      local original_stderr = io.stderr
-      io.stderr = io.tmpfile()
-
-      local targets, err = resolve.resolve_targets({ ".#nonexistent_ref_xyz_999" })
-
-      io.stderr:close()
-      io.stderr = original_stderr
+      local targets, err
+      capture_stderr(function()
+         targets, err = resolve.resolve_targets({ ".#nonexistent_ref_xyz_999" })
+      end)
 
       assert.is_nil(targets)
       assert.matches("failed to checkout ref", err)
    end)
 
    it("resolve_targets clones a git ref and cleans up", function()
-      local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
-      if toplevel == nil then
-         pending("not inside a git repo")
-         return
-      end
+      require_git_repo()
 
       local targets, err = resolve.resolve_targets({ ".#main" })
 
@@ -407,8 +399,6 @@ describe("resolve", function()
 
    -- prepare_targets
 
-   local prepare_temp_dirs = {}
-
    --- Create a real temp directory for prepare_targets testing.
    --- @return string path Absolute path to the temp directory.
    local function make_prepare_temp_dir()
@@ -416,37 +406,9 @@ describe("resolve", function()
       os.remove(tmp)
       local dir = tmp .. "-luabench-prepare-test"
       pldir.makepath(dir)
-      prepare_temp_dirs[#prepare_temp_dirs + 1] = dir
+      temp_dirs[#temp_dirs + 1] = dir
       return dir
    end
-
-   --- Run fn with stderr redirected; return captured stderr output.
-   --- Restores io.stderr even if fn raises an error.
-   --- @param fn fun()
-   --- @return string stderr_output
-   local function capture_stderr(fn)
-      local original = io.stderr
-      local tmp = io.tmpfile()
-      io.stderr = tmp
-      local ok, err = pcall(fn)
-      tmp:seek("set")
-      local output = tmp:read("*a")
-      tmp:close()
-      io.stderr = original
-      if not ok then
-         error(err, 0)
-      end
-      return output
-   end
-
-   after_each(function()
-      for _, dir in ipairs(prepare_temp_dirs) do
-         if plpath.isdir(dir) then
-            pldir.rmtree(dir)
-         end
-      end
-      prepare_temp_dirs = {}
-   end)
 
    it("prepare_targets skips targets where cleanup is false", function()
       local targets = {

@@ -23,10 +23,13 @@ describe("luabench", function()
       assert.is_function(parser.pparse)
    end)
 
-   it("parsing ref with positional targets succeeds", function()
-      local parser = luabench.build_parser()
+   --- Build a fresh parser and parse argv, returning (ok, args).
+   local function pparse(argv)
+      return luabench.build_parser():pparse(argv)
+   end
 
-      local ok, args = parser:pparse({ "ref", ".#main", ".#dev", "/tmp/mylib" })
+   it("parsing ref with positional targets succeeds", function()
+      local ok, args = pparse({ "ref", ".#main", ".#dev", "/tmp/mylib" })
 
       assert.is_true(ok)
       assert.are_equal("ref", args.command)
@@ -34,63 +37,64 @@ describe("luabench", function()
    end)
 
    it("parsing ref with -b flag produces bench list", function()
-      local parser = luabench.build_parser()
-
-      local ok, args = parser:pparse({ "ref", ".#main", "-b", "benchmarks/" })
+      local ok, args = pparse({ "ref", ".#main", "-b", "benchmarks/" })
 
       assert.is_true(ok)
       assert.are_same({ "benchmarks/" }, args.bench)
    end)
 
    it("parsing ref with no targets raises error", function()
-      local parser = luabench.build_parser()
-
-      local ok = parser:pparse({ "ref" })
+      local ok = pparse({ "ref" })
 
       assert.is_false(ok)
    end)
 
    it("parsing with no args raises error", function()
-      local parser = luabench.build_parser()
-
-      local ok = parser:pparse({})
+      local ok = pparse({})
 
       assert.is_false(ok)
    end)
 
    it("parsing ref with multiple --filter values produces table", function()
-      local parser = luabench.build_parser()
-
-      local ok, args = parser:pparse({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
+      local ok, args = pparse({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
 
       assert.is_true(ok)
       assert.are_same({ "sort", "hash" }, args.filter)
    end)
 
    it("parsing ref does not accept old -r flag", function()
-      local parser = luabench.build_parser()
-
-      local ok = parser:pparse({ "ref", ".#main", "-r", ".#dev" })
+      local ok = pparse({ "ref", ".#main", "-r", ".#dev" })
 
       assert.is_false(ok)
    end)
 
    it("parsing ref with --prepare produces prepare string", function()
-      local parser = luabench.build_parser()
-
-      local ok, args = parser:pparse({ "ref", ".#main", "--prepare", "npm ci && npx tstl" })
+      local ok, args = pparse({ "ref", ".#main", "--prepare", "npm ci && npx tstl" })
 
       assert.is_true(ok)
       assert.are_equal("npm ci && npx tstl", args.prepare)
    end)
 
-   it("parsing ref without --prepare leaves prepare nil", function()
-      local parser = luabench.build_parser()
-
-      local ok, args = parser:pparse({ "ref", ".#main" })
+   it("parsing ref without optional flags leaves defaults", function()
+      local ok, args = pparse({ "ref", ".#main" })
 
       assert.is_true(ok)
       assert.is_nil(args.prepare)
+      assert.are_same({}, args.lua_path)
+   end)
+
+   it("parsing ref with --lua-path produces lua_path list", function()
+      local ok, args = pparse({ "ref", ".#main", "--lua-path", "lua" })
+
+      assert.is_true(ok)
+      assert.are_same({ "lua" }, args.lua_path)
+   end)
+
+   it("parsing ref with multiple --lua-path values produces list", function()
+      local ok, args = pparse({ "ref", ".#main", "--lua-path", "lua", "--lua-path", "lib" })
+
+      assert.is_true(ok)
+      assert.are_same({ "lua", "lib" }, args.lua_path)
    end)
 
    it("discover feeds bench files into runner for full pipeline", function()
@@ -458,10 +462,23 @@ describe("luabench", function()
       assert.are_same({ n = { 100 } }, opts.params)
    end)
 
-   it("main without -t --filter -p passes empty opts to runner.run", function()
+   it("main without optional flags passes empty opts to runner.run", function()
       local opts = run_main_capturing_opts({ "ref", ".#main" })
 
       assert.are_same({}, opts)
+   end)
+
+   it("main with --lua-path passes opts.lua_path to runner.run", function()
+      local opts = run_main_capturing_opts({ "ref", ".#main", "--lua-path", "lua" })
+
+      assert.are_same({ "lua" }, opts.lua_path)
+   end)
+
+   it("main with --lua-path strips trailing slashes", function()
+      local opts =
+         run_main_capturing_opts({ "ref", ".#main", "--lua-path", "lua/", "--lua-path", "lib//" })
+
+      assert.are_same({ "lua", "lib" }, opts.lua_path)
    end)
 
    it("main with invalid -p format exits 1 with error", function()

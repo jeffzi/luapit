@@ -97,22 +97,94 @@ describe("subprocess", function()
       assert.is_true(pos_m < pos_z, "param 'm' must appear before 'z' (sorted order)")
    end)
 
-   -- run_subprocess end-to-end test
+   -- _build_path_line tests
 
-   it("run_subprocess with multiple targets returns results with expected fields", function()
+   it("_build_path_line without lua_paths generates default path expression", function()
+      local line = subprocess._build_path_line(nil, "   ")
+
+      assert.are_equal(
+         '   package.path = t.path .. "/?.lua" .. ";" .. t.path .. "/?/init.lua" .. ";" .. original_path',
+         line
+      )
+   end)
+
+   it("_build_path_line with single lua_path generates subdirectory expression", function()
+      local line = subprocess._build_path_line({ "lua" }, "   ")
+
+      assert.matches("/lua/%?%.lua", line)
+      assert.matches("/lua/%?/init%.lua", line)
+      assert.is_nil(line:find('"/?.lua"', 1, true), "should not contain root path pattern")
+   end)
+
+   it("_build_path_line with dot generates root path expression", function()
+      local line = subprocess._build_path_line({ "." }, "   ")
+
+      assert.are_equal(
+         '   package.path = t.path .. "/?.lua" .. ";" .. t.path .. "/?/init.lua" .. ";" .. original_path',
+         line
+      )
+   end)
+
+   it("_build_path_line with multiple lua_paths includes all in order", function()
+      local line = subprocess._build_path_line({ "lua", "lib" }, "   ")
+
+      local lua_pos = line:find("/lua/", 1, true)
+      local lib_pos = line:find("/lib/", 1, true)
+      assert.is_not_nil(lua_pos)
+      assert.is_not_nil(lib_pos)
+      assert.is_true(lua_pos < lib_pos)
+   end)
+
+   -- _generate_wrapper with lua_path tests
+
+   it("_generate_wrapper with opts.lua_path generates subdirectory path in script", function()
+      local wrapper = subprocess._generate_wrapper(
+         SORT_BENCH,
+         { { path = LIBV1_DIR, name = "libv1" } },
+         "",
+         { lua_path = { "lua" } },
+         "/tmp/test_results.json"
+      )
+
+      assert.matches("/lua/%?%.lua", wrapper)
+      assert.matches("/lua/%?/init%.lua", wrapper)
+   end)
+
+   it("_generate_wrapper without opts.lua_path generates default path in script", function()
+      local wrapper = subprocess._generate_wrapper(
+         SORT_BENCH,
+         { { path = LIBV1_DIR, name = "libv1" } },
+         "",
+         {},
+         "/tmp/test_results.json"
+      )
+
+      assert.matches('"/?.lua"', wrapper, nil, true)
+      assert.matches('"/?/init.lua"', wrapper, nil, true)
+   end)
+
+   -- run_subprocess end-to-end tests
+
+   --- Resolve the "lua" runtime or mark the test as pending.
+   --- @return string runtime Absolute path to the lua interpreter.
+   local function require_lua_runtime()
       local runtime = subprocess.resolve_runtime("lua")
       if runtime == nil then
          pending("lua not found in PATH")
-         return
       end
+      return runtime --[[@as string]]
+   end
 
-      local targets = {
-         { path = LIBV1_DIR, name = "libv1" },
-         { path = LIBV2_DIR, name = "libv2" },
-      }
+   local BOTH_TARGETS = {
+      { path = LIBV1_DIR, name = "libv1" },
+      { path = LIBV2_DIR, name = "libv2" },
+   }
+
+   it("run_subprocess with multiple targets returns results with expected fields", function()
+      local runtime = require_lua_runtime()
 
       local results, err =
-         subprocess.run_subprocess(runtime, SORT_BENCH, targets, "", { rounds = 1 })
+         subprocess.run_subprocess(runtime, SORT_BENCH, BOTH_TARGETS, "", { rounds = 1 })
 
       assert.is_nil(err)
       assert.is_table(results)
@@ -124,16 +196,7 @@ describe("subprocess", function()
    end)
 
    it("run_subprocess cleans up temporary files after execution", function()
-      local runtime = subprocess.resolve_runtime("lua")
-      if runtime == nil then
-         pending("lua not found in PATH")
-         return
-      end
-
-      local targets = {
-         { path = LIBV1_DIR, name = "libv1" },
-         { path = LIBV2_DIR, name = "libv2" },
-      }
+      local runtime = require_lua_runtime()
 
       -- Intercept os.tmpname to track base temp files it creates
       local base_files = {}
@@ -145,7 +208,7 @@ describe("subprocess", function()
       end
 
       local ok, call_err =
-         pcall(subprocess.run_subprocess, runtime, SORT_BENCH, targets, "", { rounds = 1 })
+         pcall(subprocess.run_subprocess, runtime, SORT_BENCH, BOTH_TARGETS, "", { rounds = 1 })
 
       os.tmpname = original_tmpname --luacheck: ignore 122
 
@@ -163,11 +226,7 @@ describe("subprocess", function()
    end)
 
    it("run_subprocess returns nil and error for non-zero exit", function()
-      local runtime = subprocess.resolve_runtime("lua")
-      if runtime == nil then
-         pending("lua not found in PATH")
-         return
-      end
+      local runtime = require_lua_runtime()
 
       local results, err = subprocess.run_subprocess(
          runtime,
