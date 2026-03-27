@@ -75,6 +75,24 @@ describe("luabench", function()
       assert.is_false(ok)
    end)
 
+   it("parsing ref with --prepare produces prepare string", function()
+      local parser = luabench.build_parser()
+
+      local ok, args = parser:pparse({ "ref", ".#main", "--prepare", "npm ci && npx tstl" })
+
+      assert.is_true(ok)
+      assert.are_equal("npm ci && npx tstl", args.prepare)
+   end)
+
+   it("parsing ref without --prepare leaves prepare nil", function()
+      local parser = luabench.build_parser()
+
+      local ok, args = parser:pparse({ "ref", ".#main" })
+
+      assert.is_true(ok)
+      assert.is_nil(args.prepare)
+   end)
+
    it("discover feeds bench files into runner for full pipeline", function()
       local discover_mod = require("luabench.discover")
       local runner_mod = require("luabench.runner")
@@ -132,6 +150,7 @@ describe("luabench", function()
 
       local originals = {
          resolve_targets = resolve_mod.resolve_targets,
+         prepare_targets = resolve_mod.prepare_targets,
          cleanup = resolve_mod.cleanup,
          discover = discover_mod.discover,
          run = runner_mod.run,
@@ -152,6 +171,9 @@ describe("luabench", function()
             return DEFAULT_RESOLVED
          end
       resolve_mod.cleanup = overrides.cleanup or function() end
+      if overrides.prepare_targets then
+         resolve_mod.prepare_targets = overrides.prepare_targets
+      end
       discover_mod.discover = overrides.discover
          or function()
             return { "bench1.lua" }
@@ -170,6 +192,7 @@ describe("luabench", function()
 
       local function teardown()
          resolve_mod.resolve_targets = originals.resolve_targets
+         resolve_mod.prepare_targets = originals.prepare_targets
          resolve_mod.cleanup = originals.cleanup
          discover_mod.discover = originals.discover
          runner_mod.run = originals.run
@@ -606,5 +629,84 @@ describe("luabench", function()
 
       assert.are_equal(130, s.state.exit_code)
       assert.are_equal("", stderr_output)
+   end)
+
+   it("main with --prepare calls prepare_targets with targets and command", function()
+      local s
+      s = setup_main_stubs({
+         prepare_targets = function(targets, cmd)
+            s.state.prepare_called_with = { targets = targets, cmd = cmd }
+            return targets
+         end,
+      })
+
+      luabench.main({ "ref", ".#main", "--prepare", "echo hi" })
+
+      s.teardown()
+
+      assert.are_same(DEFAULT_RESOLVED, s.state.prepare_called_with.targets)
+      assert.are_equal("echo hi", s.state.prepare_called_with.cmd)
+   end)
+
+   it("main with --prepare updates targets from prepare_targets return value", function()
+      local s
+      s = setup_main_stubs({
+         resolve_targets = function()
+            return {
+               { path = LIBV1_DIR, name = "libv1", cleanup = false },
+               { path = LIBV2_DIR, name = "libv2", cleanup = true },
+            }
+         end,
+         prepare_targets = function()
+            return DEFAULT_RESOLVED
+         end,
+         run = function(_, targets)
+            s.state.run_targets = targets
+            return {}
+         end,
+      })
+
+      luabench.main({ "ref", ".#main", ".#dev", "--prepare", "make build" })
+
+      s.teardown()
+
+      assert.are_same(DEFAULT_RESOLVED, s.state.run_targets)
+   end)
+
+   it("main with --prepare exits 1 when all targets fail preparation", function()
+      local s
+      s = setup_main_stubs({
+         prepare_targets = function()
+            return {}
+         end,
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
+
+      pcall(luabench.main, { "ref", ".#main", "--prepare", "false" })
+
+      local stderr_output = s.read_stderr()
+      s.teardown()
+
+      assert.are_equal(1, s.state.exit_code)
+      assert.matches("preparation", stderr_output)
+   end)
+
+   it("main without --prepare does not call prepare_targets", function()
+      local s
+      s = setup_main_stubs({
+         prepare_targets = function(targets)
+            s.state.prepare_called = true
+            return targets
+         end,
+      })
+
+      luabench.main({ "ref", ".#main" })
+
+      s.teardown()
+
+      assert.is_nil(s.state.prepare_called)
    end)
 end)

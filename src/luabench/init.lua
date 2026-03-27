@@ -63,6 +63,10 @@ function M.build_parser()
    ref:option("-o --output", "Output file path.")
    ref:flag("-t --test", "Run in test mode (minimal rounds).")
    ref:option("--filter", "Filter benchmarks by name pattern."):count("*")
+   ref:option(
+      "--prepare",
+      "Shell command to run in each cloned target directory before benchmarking."
+   )
 
    return parser
 end
@@ -81,6 +85,22 @@ function M.main(argv)
       end
       ---@cast targets -nil
 
+      --- Clean up temp directories and exit with an error.
+      --- @param msg string|nil Error message.
+      local function cleanup_and_die(msg)
+         resolve.cleanup(targets)
+         die(msg)
+      end
+
+      -- Run preparation command if --prepare specified
+      if args.prepare then
+         local prepared = resolve.prepare_targets(targets, args.prepare)
+         if #prepared == 0 then
+            cleanup_and_die("all targets failed preparation")
+         end
+         targets = prepared
+      end
+
       -- Discover benchmarks (default to cwd)
       local bench_paths = args.bench
       if #bench_paths == 0 then
@@ -88,8 +108,7 @@ function M.main(argv)
       end
       local bench_files = discover.discover(bench_paths)
       if #bench_files == 0 then
-         resolve.cleanup(targets)
-         die("no benchmark files found")
+         cleanup_and_die("no benchmark files found")
       end
 
       -- Build opts from CLI flags
@@ -103,8 +122,7 @@ function M.main(argv)
       if args.param and #args.param > 0 then
          local params, param_err = parse_params(args.param)
          if not params then
-            resolve.cleanup(targets)
-            die(param_err)
+            cleanup_and_die(param_err)
          end
          opts.params = params
       end
@@ -112,14 +130,10 @@ function M.main(argv)
       -- Resolve runtime if -R specified (fail fast on error)
       if args.runtime then
          local engine_name = engines.detect(args.runtime)
-         local resolve_name = args.runtime
-         if engine_name then
-            resolve_name = engines.runtime_cmd(engine_name)
-         end
+         local resolve_name = engine_name and engines.runtime_cmd(engine_name) or args.runtime
          local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
          if not runtime_path then
-            resolve.cleanup(targets)
-            die(runtime_err)
+            cleanup_and_die(runtime_err)
          end
          opts.runtime = runtime_path
          if engine_name then

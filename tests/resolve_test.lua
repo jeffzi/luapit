@@ -404,4 +404,134 @@ describe("resolve", function()
       resolve.cleanup(targets)
       assert.is_false(plpath.isdir(targets[1].path))
    end)
+
+   -- prepare_targets
+
+   local prepare_temp_dirs = {}
+
+   --- Create a real temp directory for prepare_targets testing.
+   --- @return string path Absolute path to the temp directory.
+   local function make_prepare_temp_dir()
+      local tmp = plpath.tmpname()
+      os.remove(tmp)
+      local dir = tmp .. "-luabench-prepare-test"
+      pldir.makepath(dir)
+      prepare_temp_dirs[#prepare_temp_dirs + 1] = dir
+      return dir
+   end
+
+   --- Run fn with stderr redirected; return captured stderr output.
+   --- Restores io.stderr even if fn raises an error.
+   --- @param fn fun()
+   --- @return string stderr_output
+   local function capture_stderr(fn)
+      local original = io.stderr
+      local tmp = io.tmpfile()
+      io.stderr = tmp
+      local ok, err = pcall(fn)
+      tmp:seek("set")
+      local output = tmp:read("*a")
+      tmp:close()
+      io.stderr = original
+      if not ok then
+         error(err, 0)
+      end
+      return output
+   end
+
+   after_each(function()
+      for _, dir in ipairs(prepare_temp_dirs) do
+         if plpath.isdir(dir) then
+            pldir.rmtree(dir)
+         end
+      end
+      prepare_temp_dirs = {}
+   end)
+
+   it("prepare_targets skips targets where cleanup is false", function()
+      local targets = {
+         { path = "/some/local/dir", name = "local-a", cleanup = false },
+         { path = "/another/dir", name = "local-b", cleanup = false },
+      }
+
+      local result = resolve.prepare_targets(targets, "touch marker.txt")
+
+      assert.are_same(targets, result)
+   end)
+
+   it("prepare_targets runs command in cloned target directory", function()
+      local dir = make_prepare_temp_dir()
+      local targets = {
+         { path = dir, name = "cloned-ref", cleanup = true },
+      }
+
+      local result = resolve.prepare_targets(targets, "touch marker.txt")
+
+      assert.are_equal(1, #result)
+      assert.is_true(plpath.isfile(dir .. "/marker.txt"))
+   end)
+
+   it("prepare_targets removes failed target and warns on stderr", function()
+      local dir = make_prepare_temp_dir()
+      local targets = {
+         { path = dir, name = "bad-ref", cleanup = true },
+      }
+
+      local result
+      local stderr_output = capture_stderr(function()
+         result = resolve.prepare_targets(targets, "false")
+      end)
+
+      assert.are_equal(0, #result)
+      assert.is_false(plpath.isdir(dir))
+      assert.matches("bad%-ref", stderr_output)
+   end)
+
+   it("prepare_targets returns empty list when all cloned targets fail", function()
+      local dir1 = make_prepare_temp_dir()
+      local dir2 = make_prepare_temp_dir()
+      local targets = {
+         { path = dir1, name = "fail-a", cleanup = true },
+         { path = dir2, name = "fail-b", cleanup = true },
+      }
+
+      local result
+      capture_stderr(function()
+         result = resolve.prepare_targets(targets, "false")
+      end)
+
+      assert.are_same({}, result)
+   end)
+
+   it("prepare_targets preserves non-cloned targets when all cloned targets fail", function()
+      local dir = make_prepare_temp_dir()
+      local targets = {
+         { path = "/some/local/dir", name = "local-one", cleanup = false },
+         { path = dir, name = "cloned-fail", cleanup = true },
+      }
+
+      local result
+      capture_stderr(function()
+         result = resolve.prepare_targets(targets, "false")
+      end)
+
+      assert.are_equal(1, #result)
+      assert.are_equal("local-one", result[1].name)
+      assert.is_false(result[1].cleanup)
+   end)
+
+   it("prepare_targets returns all targets when command succeeds", function()
+      local dir1 = make_prepare_temp_dir()
+      local dir2 = make_prepare_temp_dir()
+      local targets = {
+         { path = dir1, name = "ref-a", cleanup = true },
+         { path = dir2, name = "ref-b", cleanup = true },
+      }
+
+      local result = resolve.prepare_targets(targets, "true")
+
+      assert.are_equal(2, #result)
+      assert.are_equal("ref-a", result[1].name)
+      assert.are_equal("ref-b", result[2].name)
+   end)
 end)

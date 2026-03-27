@@ -292,6 +292,44 @@ function M.cleanup(targets)
    end
 end
 
+--- Check whether os.execute succeeded (Lua 5.1 returns number, 5.2+ returns boolean).
+--- @param result boolean|number|nil Return value from os.execute.
+--- @return boolean ok True if command exited with code 0.
+local function os_exec_ok(result)
+   if type(result) == "number" then
+      return result == 0
+   end
+   return result == true
+end
+
+--- Run a preparation command for each cloned target.
+--- Targets with cleanup=false pass through unchanged. For cleanup=true targets,
+--- run cmd in the target directory; on failure, warn on stderr and remove.
+--- @param targets ResolvedTarget[] Resolved targets to prepare.
+--- @param cmd string Shell command to run in each cloned target's directory.
+--- @return ResolvedTarget[] prepared Targets that succeeded (or were non-cloned).
+function M.prepare_targets(targets, cmd)
+   local result = {}
+   for i = 1, #targets do
+      local t = targets[i]
+      if not t.cleanup then
+         result[#result + 1] = t
+      else
+         local full_cmd = "cd " .. quote_arg(t.path) .. " && " .. cmd
+         local ok = os_exec_ok(os.execute(full_cmd))
+         if ok then
+            result[#result + 1] = t
+         else
+            io.stderr:write(
+               string.format("luabench: warning: prepare command failed for %s, skipping\n", t.name)
+            )
+            M.cleanup({ t })
+         end
+      end
+   end
+   return result
+end
+
 M._exec_ok = exec_ok
 M._capture = capture
 M._resolve_bare_dot = resolve_bare_dot

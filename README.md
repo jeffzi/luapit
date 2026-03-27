@@ -53,15 +53,16 @@ LuaBench provides one command: `ref`.
 luabench ref <targets...> [options]
 ```
 
-| Option                   | Description                                                  | Default                 |
-| ------------------------ | ------------------------------------------------------------ | ----------------------- |
-| `<targets>`              | One or more target specifiers (positional, required).        |                         |
-| `-b, --bench <path>`     | Benchmark files or directories (repeatable).                 | `.` (current directory) |
-| `-R, --runtime <name>`   | Run benchmarks under a different Lua runtime.                | same process            |
-| `-o, --output <path>`    | Write results to a JSON file.                                |                         |
-| `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test. | off                     |
-| `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                    |                         |
-| `--filter <pattern>`     | Filter benchmarks by Lua pattern (repeatable, OR logic).     | none (run all)          |
+| Option                   | Description                                                         | Default                 |
+| ------------------------ | ------------------------------------------------------------------- | ----------------------- |
+| `<targets>`              | One or more target specifiers (positional, required).               |                         |
+| `-b, --bench <path>`     | Benchmark files or directories (repeatable).                        | `.` (current directory) |
+| `-R, --runtime <name>`   | Run benchmarks under a different Lua runtime.                       | same process            |
+| `-o, --output <path>`    | Write results to a JSON file.                                       |                         |
+| `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test.        | off                     |
+| `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                           |                         |
+| `--filter <pattern>`     | Filter benchmarks by Lua pattern (repeatable, OR logic).            | none (run all)          |
+| `--prepare <cmd>`        | Shell command to run in each cloned target dir before benchmarking. | none                    |
 
 ### Target specifiers
 
@@ -86,6 +87,24 @@ resolves to the git repository root, or the current directory if not inside a gi
 
 Remote targets use a shallow clone when possible (branches and tags). Commit hashes fall
 back to a full clone. LuaBench removes all temporary clones when the run finishes.
+
+### Prepare hook
+
+`--prepare` runs a shell command inside each cloned target directory before benchmarking
+starts. This is useful for projects that compile to Lua (TypeScript-to-Lua, Fennel,
+MoonScript, Teal) where the repository contains source files but no `.lua` output.
+
+```sh
+luabench ref .#main .#feature -b benchmarks/ \
+   --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
+```
+
+The command runs only in cloned targets (those created from `repo#ref` specifiers). Working
+tree (`.`) and local directory targets are used as-is.
+
+If the command fails for a target, LuaBench prints a warning, removes that target, and
+continues with the remaining targets. Output from the command streams directly to the
+terminal so build errors are visible.
 
 ### Benchmark files
 
