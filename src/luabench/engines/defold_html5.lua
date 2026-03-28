@@ -38,8 +38,8 @@ local function generate_html5_wrapper(bench_file, targets, spec_name, opts)
    parts[#parts + 1] = "   end)"
    parts[#parts + 1] = "   if not ok then"
    -- HTML5: signal error via document.title (no io.stderr, no os.exit)
-   parts[#parts + 1] =
-      "      html5.run(\"document.title = 'FAIL: ' .. tostring(err):gsub('[\\\\']', '')\")"
+   parts[#parts + 1] = [[      local safe_err = tostring(err):gsub("[\\']", "")]]
+   parts[#parts + 1] = [[      html5.run("document.title = 'FAIL: " .. safe_err .. "'")]]
    parts[#parts + 1] = "      return"
    parts[#parts + 1] = "   end"
    parts[#parts + 1] = "end"

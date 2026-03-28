@@ -240,37 +240,44 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       pcall(os.remove, result_path)
    end
 
-   --- Extract trimmed error output from executeex stderr/stdout.
-   local function trim_output(stderr, stdout)
-      return ((stderr or stdout or ""):match("^(.-)%s*$")) or ""
+   --- Run a shell command; on failure clean up and return nil + error message.
+   --- @param cmd string Shell command to execute.
+   --- @param label string Human-readable label for error messages.
+   --- @return string|nil stdout Captured stdout on success, nil on failure.
+   --- @return string|nil err Error message on failure.
+   local function exec_step(cmd, label)
+      local ok, _, stdout, stderr = utils.executeex(cmd)
+      if not ok then
+         local output = ((stderr or stdout or ""):match("^(.-)%s*$")) or ""
+         cleanup()
+         if output ~= "" then
+            return nil, label .. " failed: " .. output
+         end
+         return nil, label .. " failed"
+      end
+      return stdout
    end
 
    -- Build with bob.jar
-   local build_cmd = string.format(
-      "java -jar %s --root %s resolve build --archive",
-      quote_arg(bob),
-      quote_arg(tmpdir)
+   local _, build_err = exec_step(
+      string.format(
+         "java -jar %s --root %s resolve build --archive",
+         quote_arg(bob),
+         quote_arg(tmpdir)
+      ),
+      "Defold build"
    )
-   local build_ok, _, build_stdout, build_stderr = utils.executeex(build_cmd)
-   if not build_ok then
-      local output = trim_output(build_stderr, build_stdout)
-      cleanup()
-      if output ~= "" then
-         return nil, "Defold build failed: " .. output
-      end
-      return nil, "Defold build failed"
+   if build_err then
+      return nil, build_err
    end
 
    -- Run dmengine_headless from project directory
-   local run_cmd = string.format("cd %s && %s", quote_arg(tmpdir), quote_arg(runtime_path))
-   local run_ok, _, run_stdout, run_stderr = utils.executeex(run_cmd)
-   if not run_ok then
-      local output = trim_output(run_stderr, run_stdout)
-      cleanup()
-      if output ~= "" then
-         return nil, "dmengine_headless failed: " .. output
-      end
-      return nil, "dmengine_headless failed"
+   local _, run_err = exec_step(
+      string.format("cd %s && %s", quote_arg(tmpdir), quote_arg(runtime_path)),
+      "dmengine_headless"
+   )
+   if run_err then
+      return nil, run_err
    end
 
    return subprocess.read_json_results(result_path, cleanup, "Defold process")
