@@ -1,4 +1,4 @@
----@diagnostic disable: need-check-nil, duplicate-set-field
+---@diagnostic disable: need-check-nil, duplicate-set-field, redundant-parameter, missing-parameter
 
 describe("engines", function()
    local engines
@@ -117,6 +117,78 @@ describe("engines", function()
       local output = table.concat(parts, "\n")
       assert_benchmark_patterns(output)
       assert.matches("io%.open", output)
+   end)
+
+   -- runtime_cmd() tests
+
+   for _, case in ipairs({
+      { engine = "love", expected = "love", desc = "love returns itself" },
+      {
+         engine = "defold",
+         expected = "dmengine_headless",
+         desc = "defold returns dmengine_headless",
+      },
+      {
+         engine = "defold-html5",
+         expected = "node",
+         desc = "defold-html5 returns node",
+      },
+   }) do
+      it("runtime_cmd for " .. case.engine .. " " .. case.desc, function()
+         local result = engines.runtime_cmd(case.engine)
+
+         assert.are_equal(case.expected, result)
+      end)
+   end
+
+   -- copy_file() tests
+
+   it("copy_file copies file contents to destination", function()
+      local src = os.tmpname()
+      local dst = os.tmpname()
+      os.remove(dst)
+
+      local f = io.open(src, "w")
+      f:write("hello world")
+      f:close()
+
+      local ok, err = engines.copy_file(src, dst)
+
+      assert.is_true(ok, err)
+      local df = io.open(dst, "r")
+      local content = df:read("*a")
+      df:close()
+      os.remove(src)
+      os.remove(dst)
+      assert.are_equal("hello world", content)
+   end)
+
+   it("copy_file returns false and error for nonexistent source", function()
+      local ok, err = engines.copy_file("/nonexistent/source.lua", "/tmp/dst.lua")
+
+      assert.is_false(ok)
+      assert.is_string(err)
+      assert.matches("cannot read source", err)
+   end)
+
+   -- find_command() tests
+
+   it("find_command returns path for known command", function()
+      local result = engines.find_command("lua")
+
+      -- lua should be available in test env
+      if result == nil then
+         pending("lua not found in PATH")
+         return
+      end
+      assert.is_string(result)
+      assert.matches("lua", result)
+   end)
+
+   it("find_command returns nil for nonexistent command", function()
+      local result = engines.find_command("nonexistent_command_xyz_42")
+
+      assert.is_nil(result)
    end)
 
    -- find_module_path() tests

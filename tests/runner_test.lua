@@ -1,7 +1,6 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, unused-local
 
 local path = require("pl.path")
-require("terminal")
 
 describe("runner", function()
    local runner
@@ -166,7 +165,7 @@ describe("runner", function()
       luamark.render = function()
          return "rendered"
       end
-      io.write = function(s) -- luacheck: ignore 122
+      io.write = function(s)
          spy_state.output[#spy_state.output + 1] = s
       end
       io.stderr = io.tmpfile()
@@ -174,7 +173,7 @@ describe("runner", function()
       local function teardown()
          luamark.compare_time = originals.compare
          luamark.render = originals.render
-         io.write = originals.write -- luacheck: ignore 122
+         io.write = originals.write
          io.stderr:close()
          io.stderr = originals.stderr
       end
@@ -351,7 +350,7 @@ describe("runner", function()
       assert.are_equal("default", results[1].spec)
    end)
 
-   it("run with multiple bench files still works with progress bar integration", function()
+   it("run with multiple bench files returns results for all specs", function()
       local spy_state, teardown = setup_run_stubs()
       local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
 
@@ -425,7 +424,7 @@ describe("runner", function()
       assert.are_same({ n = { 100 } }, spy_state.compare_calls[1].opts.params)
    end)
 
-   it("run does not forward filters key to compare_time", function()
+   it("run does not forward internal-only keys to compare_time", function()
       local spy_state, teardown = setup_run_stubs()
 
       runner.run({ SORT_BENCH }, TARGETS_PAIR, { rounds = 1, filters = { "sort" } })
@@ -522,6 +521,22 @@ describe("runner", function()
       assert.matches("subprocess error", stderr_output)
    end)
 
+   it("run with opts.runtime re-raises subprocess interrupted error", function()
+      local _, teardown = setup_run_stubs()
+
+      local restore = stub_subprocess(function()
+         return nil, "subprocess failed: interrupted!"
+      end)
+
+      local ok, err = pcall(runner.run, { SORT_BENCH }, TARGETS_PAIR, { runtime = "/usr/bin/lua" })
+
+      restore()
+      teardown()
+
+      assert.is_false(ok)
+      assert.matches("interrupted", tostring(err))
+   end)
+
    --- Stub engines.get_adapter to return a mock adapter.
    --- @param mock_adapter table Mock adapter with a run method.
    --- @return fun() restore Restores the original function.
@@ -616,53 +631,6 @@ describe("runner", function()
       assert.are_equal(1, captured_opts.rounds)
    end)
 
-   --- @param make_bar fun(opts: table): table Factory returning a mock progress bar.
-   --- @return fun() restore, table fresh_runner
-   local function stub_progress(make_bar)
-      local original_progress = package.loaded["luabench.progress"]
-      package.loaded["luabench.progress"] = make_bar
-      package.loaded["luabench.runner"] = nil
-      local fresh_runner = require("luabench.runner")
-
-      local function restore()
-         package.loaded["luabench.progress"] = original_progress
-         package.loaded["luabench.runner"] = nil
-         runner = require("luabench.runner")
-      end
-
-      return restore, fresh_runner
-   end
-
-   local function noop_bar(overrides)
-      local noop = function() end
-      local bar = { start = noop, update = noop, stop = noop, suspend = noop, resume = noop }
-      if overrides then
-         for k, v in pairs(overrides) do
-            bar[k] = v
-         end
-      end
-      return bar
-   end
-
-   it("run sets progress bar total to number of spec executions not files times targets", function()
-      local _, teardown = setup_run_stubs()
-      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
-
-      local captured_total
-      local restore, fresh_runner = stub_progress(function(opts)
-         captured_total = opts.total
-         return noop_bar()
-      end)
-
-      fresh_runner.run({ SORT_BENCH, multi_bench }, TARGETS_PAIR)
-
-      restore()
-      teardown()
-
-      -- sort_bench has 1 spec, multi_bench has 2 specs = 3 total spec executions
-      assert.are_equal(3, captured_total)
-   end)
-
    it("run re-raises interrupt errors from compare_time", function()
       local _, teardown = setup_run_stubs()
       local luamark = require("luamark")
@@ -676,36 +644,5 @@ describe("runner", function()
 
       assert.is_false(ok)
       assert.matches("interrupted", tostring(err))
-   end)
-
-   it("run cleans up progress bar before propagating interrupt error", function()
-      local _, teardown = setup_run_stubs()
-      local luamark = require("luamark")
-      luamark.compare_time = function()
-         error("interrupted!")
-      end
-
-      local resume_called = false
-      local stop_called = false
-      local restore, fresh_runner = stub_progress(function()
-         return noop_bar({
-            resume = function()
-               resume_called = true
-            end,
-            stop = function()
-               stop_called = true
-            end,
-         })
-      end)
-
-      local ok, err = pcall(fresh_runner.run, { SORT_BENCH }, TARGETS_PAIR)
-
-      restore()
-      teardown()
-
-      assert.is_false(ok)
-      assert.matches("interrupted", tostring(err))
-      assert.is_true(resume_called)
-      assert.is_true(stop_called)
    end)
 end)

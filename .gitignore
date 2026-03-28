@@ -49,3 +49,7 @@ package-lock.json
 
 # Playwright
 test-results/
+
+# Claude
+CLAUDE.md
+.planning/

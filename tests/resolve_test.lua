@@ -367,6 +367,34 @@ describe("resolve", function()
       assert.are_equal("working-tree", targets[2].name)
    end)
 
+   -- resolve_targets: original_spec field
+
+   it("resolve_targets sets original_spec to dot for bare dot spec", function()
+      local targets, err = resolve.resolve_targets({ "." })
+
+      assert.is_not_nil(targets, err)
+      assert.are_equal(1, #targets)
+      assert.are_equal(".", targets[1].original_spec)
+   end)
+
+   it("resolve_targets sets original_spec to raw spec string for local directory", function()
+      local targets, err = resolve.resolve_targets({ LIBV1_DIR })
+
+      assert.is_not_nil(targets, err)
+      assert.are_equal(1, #targets)
+      assert.are_equal(LIBV1_DIR, targets[1].original_spec)
+   end)
+
+   it("resolve_targets sets original_spec for each target in multi-target resolution", function()
+      local aliased_spec = "v1=" .. LIBV1_DIR
+      local targets, err = resolve.resolve_targets({ aliased_spec, "." })
+
+      assert.is_not_nil(targets, err)
+      assert.are_equal(2, #targets)
+      assert.are_equal(aliased_spec, targets[1].original_spec)
+      assert.are_equal(".", targets[2].original_spec)
+   end)
+
    -- resolve_targets with git refs (integration)
 
    it("resolve_targets returns error and cleans up when checkout fails", function()

@@ -2,8 +2,6 @@ local path = require("pl.path")
 local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
-local quote_arg = utils.quote_arg
-
 local M = {}
 
 --- Engine registry: maps engine name to adapter module path and optional
@@ -62,22 +60,11 @@ function M.copy_file(src, dst)
 end
 
 --- Search PATH for a command and return its absolute path.
+--- Delegates to subprocess.find_command.
 --- @param cmd string Command name to look up.
 --- @return string|nil path Absolute path if found, nil otherwise.
 function M.find_command(cmd)
-   local h = io.popen("command -v " .. quote_arg(cmd) .. " 2>/dev/null")
-   if not h then
-      return nil
-   end
-   local result = h:read("*a")
-   h:close()
-   if not result then
-      return nil
-   end
-   result = result:match("^(.-)%s*$")
-   if result ~= "" then
-      return result
-   end
+   return subprocess.find_command(cmd)
 end
 
 --- Append the shared benchmark-loading, opts-building, and compare_time call

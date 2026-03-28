@@ -1,5 +1,6 @@
 local dir = require("pl.dir")
 local engines = require("luabench.engines")
+local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
 local M = {}
@@ -163,23 +164,7 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       return nil, "engine failed"
    end
 
-   -- Read results
-   local content, read_err = utils.readfile(result_path)
-   if not content then
-      cleanup()
-      return nil, "engine did not produce results: " .. tostring(read_err)
-   end
-
-   cleanup()
-
-   -- Parse JSON
-   local json = require("dkjson")
-   local results, _, err = json.decode(content)
-   if not results then
-      return nil, "failed to parse engine results: " .. tostring(err)
-   end
-
-   return results
+   return subprocess.read_json_results(result_path, cleanup, "engine")
 end
 
 M._CONF_TEMPLATE = CONF_TEMPLATE

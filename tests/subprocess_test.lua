@@ -71,6 +71,17 @@ describe("subprocess", function()
       assert.matches("libv2", wrapper)
    end)
 
+   --- Find the first occurrence of a param key in generated wrapper source.
+   --- Tries bracket notation, dot notation, and quoted-bracket notation.
+   --- @param wrapper string Generated wrapper source.
+   --- @param key string Single-letter param key.
+   --- @return number|nil pos Position of first match, or nil.
+   local function find_param_pos(wrapper, key)
+      return wrapper:find('["' .. key .. '"]', 1, true)
+         or wrapper:find("%." .. key, 1, true)
+         or wrapper:find('%["' .. key .. '"%]')
+   end
+
    it("_generate_wrapper with multiple params emits them in sorted order", function()
       local wrapper = subprocess._generate_wrapper(
          SORT_BENCH,
@@ -81,15 +92,9 @@ describe("subprocess", function()
       )
 
       assert.is_string(wrapper)
-      local pos_a = wrapper:find('["a"]', 1, true)
-         or wrapper:find("%.a", 1, true)
-         or wrapper:find('%["a"%]')
-      local pos_m = wrapper:find('["m"]', 1, true)
-         or wrapper:find("%.m", 1, true)
-         or wrapper:find('%["m"%]')
-      local pos_z = wrapper:find('["z"]', 1, true)
-         or wrapper:find("%.z", 1, true)
-         or wrapper:find('%["z"%]')
+      local pos_a = find_param_pos(wrapper, "a")
+      local pos_m = find_param_pos(wrapper, "m")
+      local pos_z = find_param_pos(wrapper, "z")
       assert.is_not_nil(pos_a, "expected param 'a' in wrapper")
       assert.is_not_nil(pos_m, "expected param 'm' in wrapper")
       assert.is_not_nil(pos_z, "expected param 'z' in wrapper")
@@ -201,7 +206,7 @@ describe("subprocess", function()
       -- Intercept os.tmpname to track base temp files it creates
       local base_files = {}
       local original_tmpname = os.tmpname
-      os.tmpname = function() --luacheck: ignore 122
+      os.tmpname = function()
          local name = original_tmpname()
          table.insert(base_files, name)
          return name
@@ -210,8 +215,7 @@ describe("subprocess", function()
       local ok, call_err =
          pcall(subprocess.run_subprocess, runtime, SORT_BENCH, BOTH_TARGETS, "", { rounds = 1 })
 
-      os.tmpname = original_tmpname --luacheck: ignore 122
-
+      os.tmpname = original_tmpname
       assert.is_true(ok, "run_subprocess raised: " .. tostring(call_err))
       assert.is_true(#base_files >= 2, "expected at least 2 tmpname calls")
 

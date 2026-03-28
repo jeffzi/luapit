@@ -206,6 +206,7 @@ end
 --- @field path string Absolute directory path to use for benchmarking.
 --- @field name string Display name (alias > ref > basename > working-tree).
 --- @field cleanup boolean Whether this target's path needs cleanup (temp dir).
+--- @field original_spec string Raw spec string from the input array.
 
 --- Resolve raw target specifiers into benchmark targets.
 --- Parse all specs first, validate for duplicates, then resolve each.
@@ -237,12 +238,15 @@ function M.resolve_targets(raw_specs)
       local name = M.display_name(p)
 
       if p.bare_dot then
-         resolved[#resolved + 1] = resolve_bare_dot(p.alias)
+         local target = resolve_bare_dot(p.alias)
+         target.original_spec = raw_specs[i]
+         resolved[#resolved + 1] = target
       elseif p.local_dir then
          resolved[#resolved + 1] = {
             path = p.local_dir,
             name = name,
             cleanup = false,
+            original_spec = raw_specs[i],
          }
       elseif p.repo and p.ref then
          local temp_dir, temp_err = make_temp_dir(p.ref)
@@ -262,7 +266,8 @@ function M.resolve_targets(raw_specs)
             return nil, clone_err
          end
 
-         local target = { path = temp_dir, name = name, cleanup = true }
+         local target =
+            { path = temp_dir, name = name, cleanup = true, original_spec = raw_specs[i] }
          resolved[#resolved + 1] = target
          cleanup_on_error[#cleanup_on_error + 1] = target
       end

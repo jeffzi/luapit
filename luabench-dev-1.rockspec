@@ -32,8 +32,6 @@ dependencies = {
    "penlight >= 1.11.0",
    "dkjson >= 2.5",
    "chronos >= 0.2",
-   "terminal",
-   "luasystem >= 0.6.3",
 }
 
 build = {
@@ -44,7 +42,6 @@ build = {
       ["luabench.export"] = "src/luabench/export.lua",
       ["luabench.loader"] = "src/luabench/loader.lua",
       ["luabench.resolve"] = "src/luabench/resolve.lua",
-      ["luabench.progress"] = "src/luabench/progress.lua",
       ["luabench.runner"] = "src/luabench/runner.lua",
       ["luabench.subprocess"] = "src/luabench/subprocess.lua",
       ["luabench.engines"] = "src/luabench/engines/init.lua",

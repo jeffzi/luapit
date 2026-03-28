@@ -1,7 +1,6 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field
 
 local path = require("pl.path")
-require("terminal")
 
 describe("luabench", function()
    local luabench
@@ -84,13 +83,6 @@ describe("luabench", function()
    end)
 
    it("parsing ref with --lua-path produces lua_path list", function()
-      local ok, args = pparse({ "ref", ".#main", "--lua-path", "lua" })
-
-      assert.is_true(ok)
-      assert.are_same({ "lua" }, args.lua_path)
-   end)
-
-   it("parsing ref with multiple --lua-path values produces list", function()
       local ok, args = pparse({ "ref", ".#main", "--lua-path", "lua", "--lua-path", "lib" })
 
       assert.is_true(ok)
@@ -117,7 +109,7 @@ describe("luabench", function()
       end
 
       local original_write = io.write
-      io.write = function() end -- luacheck: ignore 122
+      io.write = function() end
 
       local bench_files = discover_mod.discover({
          FIXTURE_DIR .. "/benchmarks/sort_bench.lua",
@@ -129,7 +121,7 @@ describe("luabench", function()
 
       luamark.compare_time = original_compare
       luamark.render = original_render
-      io.write = original_write -- luacheck: ignore 122
+      io.write = original_write
 
       assert.is_true(compare_called)
       assert.is_not_nil(compare_args["libv1"])
@@ -167,7 +159,7 @@ describe("luabench", function()
       local state = {}
 
       io.stderr = io.tmpfile()
-      io.write = function() end -- luacheck: ignore 122
+      io.write = function() end
 
       -- Happy-path defaults (tests override via overrides table)
       resolve_mod.resolve_targets = overrides.resolve_targets
@@ -191,7 +183,7 @@ describe("luabench", function()
       end
 
       if overrides.exit then
-         os.exit = overrides.exit -- luacheck: ignore 122
+         os.exit = overrides.exit
       end
 
       local function teardown()
@@ -201,10 +193,10 @@ describe("luabench", function()
          discover_mod.discover = originals.discover
          runner_mod.run = originals.run
          export_mod.write_json = originals.write_json
-         os.exit = originals.exit -- luacheck: ignore 122
+         os.exit = originals.exit
          io.stderr:close()
          io.stderr = originals.stderr
-         io.write = originals.write -- luacheck: ignore 122
+         io.write = originals.write
       end
 
       --- Read captured stderr contents.
@@ -435,12 +427,6 @@ describe("luabench", function()
    end)
 
    it("main with --filter passes opts.filters to runner.run", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main", "--filter", "sort" })
-
-      assert.are_same({ "sort" }, opts.filters)
-   end)
-
-   it("main with multiple --filter values passes all to opts.filters", function()
       local opts =
          run_main_capturing_opts({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
 
@@ -468,13 +454,7 @@ describe("luabench", function()
       assert.are_same({}, opts)
    end)
 
-   it("main with --lua-path passes opts.lua_path to runner.run", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main", "--lua-path", "lua" })
-
-      assert.are_same({ "lua" }, opts.lua_path)
-   end)
-
-   it("main with --lua-path strips trailing slashes", function()
+   it("main with --lua-path strips trailing slashes and passes opts.lua_path", function()
       local opts =
          run_main_capturing_opts({ "ref", ".#main", "--lua-path", "lua/", "--lua-path", "lib//" })
 

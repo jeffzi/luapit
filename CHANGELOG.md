@@ -9,13 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Game engine runtimes via `-R love`, `-R defold`, and `-R defold-html5`
-  for benchmarking code that depends on engine-specific APIs
-- Love2D runtime: runs benchmarks in a headless Love2D project
-- Defold runtime: builds a minimal Defold project and runs benchmarks
-  via the headless engine
-- Defold HTML5 runtime: builds for the `js-web` platform and runs
-  benchmarks in headless Chromium via Playwright
+- `--lua-path` option to add subdirectories within each target to
+  `package.path` (repeatable), for projects where Lua files live under
+  a subdirectory (e.g., `--lua-path lua`)
+- `--prepare` hook to run a shell command in each cloned target directory
+  before benchmarking (e.g., compile TypeScript-to-Lua or Fennel sources)
+- Love2D runtime (`-R love`): runs benchmarks in a headless Love2D
+  project for code that depends on Love2D APIs
+- Defold runtime (`-R defold`): builds a minimal Defold project and
+  runs benchmarks via the headless engine
+- Defold HTML5 runtime (`-R defold-html5`): builds for the `js-web`
+  platform and runs benchmarks in headless Chromium via Playwright
+
+### Fixed
+
+- Ctrl-C during a benchmark run now exits immediately instead of being
+  swallowed as a warning
 
 ## [0.4.0] - 2026-03-21
 

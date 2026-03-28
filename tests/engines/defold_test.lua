@@ -235,14 +235,12 @@ describe("engines.defold", function()
          return
       end
 
-      local bob = os.getenv("BOB") --luacheck: ignore 311
-      if not bob or bob == "" then
-         local found =
-            require_command("bob.jar", "bob.jar not found (set BOB env var or add to PATH)")
-         if not found then
+      if not os.getenv("BOB") or os.getenv("BOB") == "" then
+         if
+            not require_command("bob.jar", "bob.jar not found (set BOB env var or add to PATH)")
+         then
             return
          end
-         bob = found --luacheck: ignore 311
       end
 
       local results, err = defold.run(

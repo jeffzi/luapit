@@ -24,6 +24,22 @@ local function build_path_line(lua_paths, indent)
    return indent .. "package.path = " .. table.concat(segs, ' .. ";" .. ')
 end
 
+--- Search PATH for a command and return its absolute path.
+--- @param cmd string Command name to look up.
+--- @return string|nil path Absolute path if found, nil otherwise.
+local function find_command(cmd)
+   local h = io.popen("command -v " .. quote_arg(cmd) .. " 2>/dev/null")
+   if not h then
+      return nil
+   end
+   local result = h:read("*a")
+   h:close()
+   if not result or result:match("^%s*$") then
+      return nil
+   end
+   return result:match("^(.-)%s*$")
+end
+
 --- Resolve a runtime name or path to an absolute path.
 --- @param name_or_path string Runtime name (e.g. "luajit") or path (e.g. "/usr/bin/lua").
 --- @return string|nil path Resolved absolute path, or nil on failure.
@@ -32,23 +48,34 @@ local function resolve_runtime(name_or_path)
    if not name_or_path or name_or_path == "" then
       return nil, "runtime not specified"
    end
-   local cmd = "command -v " .. quote_arg(name_or_path) .. " 2>/dev/null"
-   local h = io.popen(cmd)
-   if not h then
-      return nil, "failed to check runtime: " .. name_or_path
-   end
-   local result = h:read("*a")
-   h:close()
-   if not result then
+   local found = find_command(name_or_path)
+   if not found then
       return nil,
          string.format("runtime not found: %q (not in PATH and not a valid path)", name_or_path)
    end
-   result = result:match("^(.-)%s*$")
-   if result == "" then
-      return nil,
-         string.format("runtime not found: %q (not in PATH and not a valid path)", name_or_path)
+   return found
+end
+
+--- Read a JSON result file, call cleanup, and parse the JSON.
+--- Shared by subprocess.run_subprocess and engine adapters after execution.
+--- @param result_path string Path to the JSON result file.
+--- @param cleanup fun() Cleanup function to call (always called on both paths).
+--- @param label string Label for error messages (e.g. "subprocess", "engine").
+--- @return table[]|nil results Parsed results, or nil on error.
+--- @return string|nil err Error message on failure.
+local function read_json_results(result_path, cleanup, label)
+   local content, read_err = utils.readfile(result_path)
+   if not content then
+      cleanup()
+      return nil, label .. " did not produce results: " .. tostring(read_err)
    end
-   return result
+   cleanup()
+   local json = require("dkjson")
+   local results, _, parse_err = json.decode(content)
+   if not results then
+      return nil, "failed to parse " .. label .. " results: " .. tostring(parse_err)
+   end
+   return results
 end
 
 --- Generate a wrapper Lua script for subprocess execution.
@@ -182,27 +209,13 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
       return nil, "subprocess failed"
    end
 
-   -- Read results
-   local content, read_err = utils.readfile(result_path)
-   if not content then
-      cleanup()
-      return nil, "subprocess did not produce results: " .. tostring(read_err)
-   end
-
-   cleanup()
-
-   -- Parse JSON
-   local json = require("dkjson")
-   local results, _, err = json.decode(content)
-   if not results then
-      return nil, "failed to parse subprocess results: " .. tostring(err)
-   end
-
-   return results
+   return read_json_results(result_path, cleanup, "subprocess")
 end
 
+M.find_command = find_command
 M.resolve_runtime = resolve_runtime
 M.run_subprocess = run_subprocess
+M.read_json_results = read_json_results
 M._generate_wrapper = generate_wrapper
 M._build_path_line = build_path_line
 

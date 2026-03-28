@@ -124,12 +124,7 @@ describe("export", function()
 
       local data = write_and_read(results, {}, "0.3.0")
 
-      assert.are_equal(1, #data.results)
-      assert.are_equal("bench/sort", data.results[1].file)
-      assert.are_equal("insertion", data.results[1].spec)
-      assert.are_equal(2, #data.results[1].targets)
-      assert.are_equal("v1", data.results[1].targets[1].name)
-      assert.are_equal("v2", data.results[1].targets[2].name)
+      assert.are_same(results, data.results)
    end)
 
    it("write_json returns nil and error string when filepath is not writable", function()

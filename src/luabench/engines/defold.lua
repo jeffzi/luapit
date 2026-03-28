@@ -1,4 +1,5 @@
 local dir = require("pl.dir")
+local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
 local engines = require("luabench.engines")
@@ -141,26 +142,22 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    end
 
    -- Write static project files
-   local function write_file(fpath, content)
-      return utils.writefile(fpath, content)
-   end
-
-   ok, err = write_file(tmpdir .. "/game.project", GAME_PROJECT)
+   ok, err = utils.writefile(tmpdir .. "/game.project", GAME_PROJECT)
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
    end
-   ok, err = write_file(tmpdir .. "/input/game.input_binding", INPUT_BINDING)
+   ok, err = utils.writefile(tmpdir .. "/input/game.input_binding", INPUT_BINDING)
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
    end
-   ok, err = write_file(tmpdir .. "/main/main.collection", MAIN_COLLECTION)
+   ok, err = utils.writefile(tmpdir .. "/main/main.collection", MAIN_COLLECTION)
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
    end
-   ok, err = write_file(tmpdir .. "/main/test.go", TEST_GO)
+   ok, err = utils.writefile(tmpdir .. "/main/test.go", TEST_GO)
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
@@ -198,7 +195,7 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
 
    -- Generate and write wrapper script
    local wrapper = generate_defold_wrapper(bench_file, targets, spec_name, opts, result_path)
-   ok, err = write_file(tmpdir .. "/main/test.script", wrapper)
+   ok, err = utils.writefile(tmpdir .. "/main/test.script", wrapper)
    if not ok then
       dir.rmtree(tmpdir)
       return nil, err
@@ -276,23 +273,7 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       return nil, "dmengine_headless failed"
    end
 
-   -- Read results
-   local content, err = utils.readfile(result_path)
-   if not content then
-      cleanup()
-      return nil, "Defold process did not produce results: " .. tostring(err)
-   end
-
-   cleanup()
-
-   -- Parse JSON
-   local json = require("dkjson")
-   local results, _, parse_err = json.decode(content)
-   if not results then
-      return nil, "failed to parse Defold results: " .. tostring(parse_err)
-   end
-
-   return results
+   return subprocess.read_json_results(result_path, cleanup, "Defold process")
 end
 
 -- Expose internals for testing
