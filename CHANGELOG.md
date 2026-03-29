@@ -20,20 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs benchmarks via the headless engine
 - Defold HTML5 runtime (`-R defold-html5`): builds for the `js-web`
   platform and runs benchmarks in headless Chromium via Playwright
-- Windows support with cross-platform subprocess execution and CI
+- Windows support: run benchmarks on Windows
+- Per-target status lines printed as each benchmark completes
 
 ### Removed
 
-- Progress bar (replaced by simpler output during subprocess execution)
+- Progress bar
 
 ### Fixed
 
 - Ctrl-C during a benchmark run now exits immediately instead of being
-  swallowed as a warning
-- Missing repo in target spec (e.g. `#sha`) now suggests `.#sha`
-  instead of a generic error
+  ignored
+- Incomplete target spec (e.g., `#sha`) now shows a helpful error with
+  the correct format instead of a generic message
 - Malformed benchmark specs (named specs without an `fn` function)
-  now warn and skip instead of causing a cryptic error
+  now warn and skip instead of exiting with an error
 
 ## [0.4.0] - 2026-03-21
 
@@ -86,9 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Benchmark file discovery with recursive directory scanning
 - Single-benchmark and multi-benchmark file formats
-- Target isolation — each version uses its own modules, preventing cross-version leakage
+- Target isolation — each version uses its own modules, preventing
+  cross-version dependency leakage
 - CLI entrypoint with `ref` subcommand for comparing library versions
-- Support for spec lifecycle hooks (`before`, `after`, `baseline`)
+- Support for benchmark lifecycle hooks (`before`, `after`, `baseline`)
 
 [Unreleased]: https://github.com/jeffzi/luabench/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/jeffzi/luabench/compare/v0.3.0...v0.4.0
