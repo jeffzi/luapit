@@ -1,4 +1,4 @@
----@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter
+---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter, unused-local, unused-vararg
 local path = require("pl.path")
 
 local IS_WINDOWS = package.config:sub(1, 1) == "\\"
