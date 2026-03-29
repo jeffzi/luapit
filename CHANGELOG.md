@@ -20,47 +20,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs benchmarks via the headless engine
 - Defold HTML5 runtime (`-R defold-html5`): builds for the `js-web`
   platform and runs benchmarks in headless Chromium via Playwright
+- Windows support with cross-platform subprocess execution and CI
+
+### Removed
+
+- Progress bar (replaced by simpler output during subprocess execution)
 
 ### Fixed
 
 - Ctrl-C during a benchmark run now exits immediately instead of being
   swallowed as a warning
-- Missing repo in target spec (e.g. `#sha`) now shows a helpful hint
-  suggesting `.#sha` instead of a generic error
+- Missing repo in target spec (e.g. `#sha`) now suggests `.#sha`
+  instead of a generic error
+- Malformed benchmark specs (named specs without an `fn` function)
+  now warn and skip instead of causing a cryptic error
 
 ## [0.4.0] - 2026-03-21
 
 ### Added
 
-- Benchmark filtering via `--filter` with Lua pattern matching and OR logic for multiple patterns
-- User-defined parameters via `-p name:value` with auto-coercion
-  (number, boolean, string), repeatable for multiple values per name
+- Benchmark filtering via `--filter` with Lua pattern matching; pass
+  multiple `--filter` flags to match any pattern
+- User-defined parameters via `-p name:value` (number, boolean, or
+  string); repeatable for multiple values per name
 - Test mode via `-t` for quick smoke testing (runs 1 round per benchmark)
-- Runtime selection via `-R` to spawn benchmarks under a different Lua interpreter
+- Runtime selection via `-R` to run benchmarks under a different Lua interpreter
 
 ## [0.3.0] - 2026-03-21
 
 ### Added
 
-- JSON export via `-o results.json` with metadata envelope (version, timestamp, targets, results)
-- Progress bar showing benchmark progress with ETA, auto-disabled on non-TTY
-- Benchmark results available as structured data for programmatic use
+- JSON export via `-o results.json` including version, timestamp, targets, and results
+- Progress bar showing benchmark progress with ETA, hidden automatically when output is not a terminal
+- Benchmark results returned as structured data for use in scripts and CI
 
 ### Changed
 
-- Benchmark headers use `▌` prefix instead of dashes
+- Benchmark section headers now use a `▌` prefix
 
 ## [0.2.0] - 2026-03-21
 
 ### Added
 
-- Target resolution with git refspec parsing (`[alias=]repo#ref` format)
+- Target resolution using `[alias=]repo#ref` syntax to specify repos, refs, and display names
 - Support for remote URLs (HTTPS and SSH) as benchmark targets
 - Local directory paths as benchmark targets (auto-detected, no `#` needed)
 - Bare `.` target resolves to git repo root for benchmarking the working tree
 - Alias support for display names (`v1=.#v1.0.0` shows as "v1" in output)
 - Duplicate display name detection with actionable error messages
-- Temp directory lifecycle management with guaranteed cleanup
+- Temp directories are always cleaned up after a run, even on failure
 - Shallow clone for remote repos, full clone for local repos
 
 ### Changed
@@ -77,14 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Benchmark file discovery with recursive directory scanning
-- Single-spec and named-specs benchmark file formats
+- Single-benchmark and multi-benchmark file formats
 - Target isolation — each version uses its own modules, preventing cross-version leakage
 - CLI entrypoint with `ref` subcommand for comparing library versions
-- Full support for luamark Spec hooks (before, after, baseline)
-
-### Changed
-
-- Restructured project from flat module to submodule layout
+- Support for spec lifecycle hooks (`before`, `after`, `baseline`)
 
 [Unreleased]: https://github.com/jeffzi/luabench/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/jeffzi/luabench/compare/v0.3.0...v0.4.0
