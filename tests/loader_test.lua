@@ -87,6 +87,20 @@ describe("loader", function()
       end)
    end
 
+   -- load_benchmark: named-spec validation
+
+   for _, case in ipairs({
+      { file = "/invalid_spec_bench.lua", desc = "non-table spec value" },
+      { file = "/missing_fn_bench.lua", desc = "table without fn field" },
+   }) do
+      it("load_benchmark with " .. case.desc .. " returns nil and warns to stderr", function()
+         local result = loader.load_benchmark(FIXTURE_DIR .. case.file)
+
+         assert.is_nil(result)
+         assert.matches("not a table with an fn field", read_stderr())
+      end)
+   end
+
    -- bench_id: identity derivation
 
    for _, case in ipairs({

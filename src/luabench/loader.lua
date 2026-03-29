@@ -19,9 +19,21 @@ function M.load_benchmark(filepath)
       return nil
    end
 
-   if result.fn then
+   if result.fn ~= nil then
       return { [""] = result }
    else
+      for name, entry in pairs(result) do
+         if type(entry) ~= "table" or type(entry.fn) ~= "function" then
+            io.stderr:write(
+               string.format(
+                  "luabench: warning: %s: spec %q is not a table with an fn field\n",
+                  filepath,
+                  tostring(name)
+               )
+            )
+            return nil
+         end
+      end
       return result
    end
 end
