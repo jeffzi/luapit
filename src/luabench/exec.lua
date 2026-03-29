@@ -20,11 +20,15 @@ local wait_mod
 --- @type table|nil
 local posix_mod
 
+--- @type table|nil
+local poll_mod
+
 if not IS_WINDOWS then
    posix_ok, unistd = pcall(require, "posix.unistd")
    if posix_ok then
       wait_mod = require("posix.sys.wait")
       posix_mod = require("posix")
+      poll_mod = require("posix.poll")
    end
 end
 
@@ -41,6 +45,24 @@ local SIGINT_EXIT = 128 + SIGINT -- 130: conventional exit code for SIGINT death
 --- Raise an "interrupted!" error to propagate SIGINT up the call stack.
 local function raise_interrupted()
    error("interrupted!")
+end
+
+--- Check a POSIX-style wait result for SIGINT and return success status.
+--- Raises "interrupted!" if the child was killed by SIGINT or exited with code 130.
+--- @param reason string "killed"/"exited" (posix.sys.wait) or "signal"/"exit" (os.execute 5.2+).
+--- @param status number|nil Signal number or exit code (nil-safe for os.execute narrowing).
+--- @return boolean ok True if the process exited with status 0.
+local function check_exit(reason, status)
+   if (reason == "killed" or reason == "signal") and status == SIGINT then
+      raise_interrupted()
+   end
+   if reason == "exited" or reason == "exit" then
+      if status == SIGINT_EXIT then
+         raise_interrupted()
+      end
+      return status == 0
+   end
+   return false
 end
 
 --- Get the parent process ID via luaposix (POSIX only).
@@ -67,19 +89,46 @@ local function check_orphaned(ppid_before)
    end
 end
 
---- Read all data from a file descriptor until EOF.
---- @param fd number File descriptor to read from.
---- @return string data Concatenated data read from fd.
-local function read_all(fd)
-   local chunks = {}
-   while true do
-      local chunk = unistd.read(fd, 4096)
-      if chunk == nil or chunk == "" then
-         break
+--- Drain two pipe read-ends concurrently using poll to avoid deadlock.
+--- @param fd1 number First file descriptor (e.g. stdout).
+--- @param fd2 number Second file descriptor (e.g. stderr).
+--- @return string data1 Data read from fd1.
+--- @return string data2 Data read from fd2.
+local function drain_pipes(fd1, fd2)
+   local rpoll = poll_mod.rpoll
+   local chunks1, chunks2 = {}, {}
+   local open1, open2 = true, true
+
+   while open1 or open2 do
+      local progress = false
+
+      if open1 and rpoll(fd1, 0) == 1 then
+         local data = unistd.read(fd1, 4096)
+         if data == nil or data == "" then
+            open1 = false
+         else
+            chunks1[#chunks1 + 1] = data
+         end
+         progress = true
       end
-      chunks[#chunks + 1] = chunk
+
+      if open2 and rpoll(fd2, 0) == 1 then
+         local data = unistd.read(fd2, 4096)
+         if data == nil or data == "" then
+            open2 = false
+         else
+            chunks2[#chunks2 + 1] = data
+         end
+         progress = true
+      end
+
+      if not progress and (open1 or open2) then
+         local wait_fd = open1 and fd1 or fd2
+         rpoll(wait_fd, 10)
+      end
    end
-   return table.concat(chunks)
+
+   return table.concat(chunks1), table.concat(chunks2)
 end
 
 --- Run a shell command capturing stdout and stderr via POSIX pipes (no temp files).
@@ -91,9 +140,25 @@ local function run_posix(cmd)
    local ppid_before = M._get_ppid()
 
    local stdout_r, stdout_w = unistd.pipe()
+   if stdout_r == nil then
+      return false, "", "pipe failed"
+   end
+
    local stderr_r, stderr_w = unistd.pipe()
+   if stderr_r == nil then
+      unistd.close(stdout_r)
+      unistd.close(stdout_w)
+      return false, "", "pipe failed"
+   end
 
    local pid = unistd.fork()
+   if pid == nil or pid == -1 then
+      unistd.close(stdout_r)
+      unistd.close(stdout_w)
+      unistd.close(stderr_r)
+      unistd.close(stderr_w)
+      return false, "", "fork failed"
+   end
    if pid == 0 then
       -- Child: redirect stdout/stderr to pipe write ends
       unistd.close(stdout_r)
@@ -111,25 +176,14 @@ local function run_posix(cmd)
    unistd.close(stdout_w)
    unistd.close(stderr_w)
 
-   local stdout_data = read_all(stdout_r)
-   local stderr_data = read_all(stderr_r)
+   local stdout_data, stderr_data = drain_pipes(stdout_r, stderr_r)
    unistd.close(stdout_r)
    unistd.close(stderr_r)
 
    local _, reason, status = wait_mod.wait(pid)
-
    check_orphaned(ppid_before)
-
-   if reason == "killed" and status == SIGINT then
-      raise_interrupted()
-   end
-   if reason == "exited" then
-      if status == SIGINT_EXIT then
-         raise_interrupted()
-      end
-      return status == 0, stdout_data, stderr_data
-   end
-   return false, stdout_data, stderr_data
+   local ok = check_exit(reason, status)
+   return ok, stdout_data, stderr_data
 end
 
 --- Run a shell command capturing stdout and stderr via temp files (Windows fallback).
@@ -191,19 +245,8 @@ end
 local function stream_posix(cmd)
    local ppid_before = M._get_ppid()
    local status, reason = posix_mod.spawn({ "/bin/sh", "-c", cmd })
-
    check_orphaned(ppid_before)
-
-   if reason == "killed" and status == SIGINT then
-      raise_interrupted()
-   end
-   if reason == "exited" then
-      if status == SIGINT_EXIT then
-         raise_interrupted()
-      end
-      return status == 0
-   end
-   return false
+   return check_exit(reason, status)
 end
 
 --- Run a shell command streaming output to terminal (Windows/fallback).
@@ -217,14 +260,8 @@ local function stream_fallback(cmd)
    check_orphaned(ppid_before)
 
    -- Lua 5.2+: os.execute returns (true/nil, "exit"/"signal", code)
-   if what == "signal" and code == SIGINT then
-      raise_interrupted()
-   end
    if what ~= nil then
-      if what == "exit" and code == SIGINT_EXIT then
-         raise_interrupted()
-      end
-      return rc == true
+      return check_exit(what, code)
    end
    -- Lua 5.1/LuaJIT: rc is raw wait status from system()
    -- Check if child was killed by signal 2 (SIGINT)
