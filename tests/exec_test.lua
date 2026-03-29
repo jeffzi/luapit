@@ -27,10 +27,14 @@ describe("exec", function()
 
    it("run when command exits 0 returns true and captured stdout", function()
       local ok, stdout, stderr = exec.run("echo hello")
-
       assert.is_true(ok)
       assert.matches("hello", stdout)
       assert.are_equal("", stderr)
+
+      local ok2, stdout2, stderr2 = exec.run("true")
+      assert.is_true(ok2)
+      assert.are_equal("", stdout2)
+      assert.are_equal("", stderr2)
    end)
 
    it("run when command exits non-zero returns false and captured stderr", function()
@@ -57,14 +61,6 @@ describe("exec", function()
       assert.is_nil(stderr:find("out_line", 1, true))
    end)
 
-   it("run when command produces no output returns true and empty strings", function()
-      local ok, stdout, stderr = exec.run("true")
-
-      assert.is_true(ok)
-      assert.are_equal("", stdout)
-      assert.are_equal("", stderr)
-   end)
-
    it("run when io.popen fails returns false and empty strings", function()
       if not IS_WINDOWS then
          pending("Windows fallback only")
@@ -80,7 +76,7 @@ describe("exec", function()
       assert.are_equal("", stderr)
    end)
 
-   it("run throws interrupted when child exits 130", function()
+   it("run when child exits 130 throws interrupted error", function()
       if IS_WINDOWS then
          pending("POSIX only")
       end
@@ -89,7 +85,7 @@ describe("exec", function()
       end, "interrupted!")
    end)
 
-   it("run throws interrupted when parent dies during execution", function()
+   it("run when parent dies during execution throws interrupted error", function()
       if IS_WINDOWS then
          pending("POSIX only")
       end
@@ -100,26 +96,16 @@ describe("exec", function()
       end, "interrupted!")
    end)
 
-   it("stream when command exits 0 returns true", function()
-      local ok = exec.stream("true")
-
-      assert.is_true(ok)
-   end)
-
-   it("stream when command exits non-zero returns false", function()
-      local ok = exec.stream("false")
-
-      assert.is_false(ok)
-   end)
-
-   it("stream when command succeeds returns no additional values", function()
-      local ok, extra = exec.stream("echo hello")
-
+   it("stream returns true on success and false on failure with no extra values", function()
+      local ok, extra = exec.stream("true")
       assert.is_true(ok)
       assert.is_nil(extra)
+
+      local ok2 = exec.stream("false")
+      assert.is_false(ok2)
    end)
 
-   it("stream throws interrupted when child exits 130", function()
+   it("stream when child exits 130 throws interrupted error", function()
       if IS_WINDOWS then
          pending("POSIX only")
       end
@@ -128,7 +114,7 @@ describe("exec", function()
       end, "interrupted!")
    end)
 
-   it("stream throws interrupted when parent dies during execution", function()
+   it("stream when parent dies during execution throws interrupted error", function()
       if IS_WINDOWS then
          pending("POSIX only")
       end

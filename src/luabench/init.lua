@@ -25,7 +25,7 @@ local function parse_params(raw_params)
    local params = {}
    for i = 1, #raw_params do
       local name, value = raw_params[i]:match("^([^:]+):(.+)$")
-      if not name then
+      if name == nil then
          return nil,
             string.format("invalid parameter format: %q (expected NAME:VALUE)", raw_params[i])
       end
@@ -37,15 +37,13 @@ local function parse_params(raw_params)
       elseif value == "false" then
          value = false
       end
-      if not params[name] then
+      if params[name] == nil then
          params[name] = {}
       end
       params[name][#params[name] + 1] = value
    end
    return params
 end
-
-M._parse_params = parse_params
 
 --- Build argparse parser with all CLI flags.
 --- @return table parser Configured argparse parser.
@@ -81,7 +79,7 @@ function M.main(argv)
    if args.command == "ref" then
       -- Resolve targets (fail fast on error)
       local targets, err = resolve.resolve_targets(args.targets)
-      if not targets then
+      if targets == nil then
          die(err)
       end
       ---@cast targets -nil
@@ -90,17 +88,19 @@ function M.main(argv)
       -- (from resolve, prepare, runner, or subprocesses) is caught, cleanup
       -- always runs, and we exit 130 cleanly.
       local ref_ok, ref_err = pcall(function()
-         --- Clean up temp directories and exit with an error.
+         --- @class BailError
+         --- @field bail_msg string
+
+         --- Bail out of the benchmark pipeline with a user-facing error.
          --- @param msg string|nil Error message.
-         local function cleanup_and_die(msg)
-            resolve.cleanup(targets)
-            die(msg)
+         local function bail(msg)
+            error({ bail_msg = msg }, 0)
          end
 
          if args.prepare ~= nil then
             local prepared = resolve.prepare_targets(targets, args.prepare)
             if #prepared == 0 then
-               cleanup_and_die("all targets failed preparation")
+               bail("all targets failed preparation")
             end
             targets = prepared
          end
@@ -111,24 +111,24 @@ function M.main(argv)
          end
          local bench_files = discover.discover(bench_paths)
          if #bench_files == 0 then
-            cleanup_and_die("no benchmark files found")
+            bail("no benchmark files found")
          end
 
          local opts = {}
-         if args.test then
+         if args.test ~= nil then
             opts.rounds = 1
          end
-         if args.filter and #args.filter > 0 then
+         if args.filter ~= nil and #args.filter > 0 then
             opts.filters = args.filter
          end
-         if args.param and #args.param > 0 then
+         if args.param ~= nil and #args.param > 0 then
             local params, param_err = parse_params(args.param)
             if params == nil then
-               cleanup_and_die(param_err)
+               bail(param_err)
             end
             opts.params = params
          end
-         if args.lua_path and #args.lua_path > 0 then
+         if args.lua_path ~= nil and #args.lua_path > 0 then
             local paths = {}
             for i = 1, #args.lua_path do
                paths[i] = args.lua_path[i]:gsub("/+$", "")
@@ -146,12 +146,18 @@ function M.main(argv)
             end
             local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
             if runtime_path == nil then
-               cleanup_and_die(runtime_err)
+               bail(runtime_err)
             end
             opts.runtime = runtime_path
             if engine_name ~= nil then
                opts.engine_name = engine_name
             end
+         else
+            local runtime_path, runtime_err = subprocess.detect_runtime()
+            if runtime_path == nil then
+               bail(runtime_err)
+            end
+            opts.runtime = runtime_path
          end
 
          local run_result = runner.run(bench_files, targets, opts)
@@ -159,7 +165,7 @@ function M.main(argv)
          if args.output ~= nil then
             local ok, write_err = export.write_json(args.output, run_result, targets, M._VERSION)
             if not ok then
-               cleanup_and_die("failed to write JSON: " .. tostring(write_err))
+               bail("failed to write JSON: " .. tostring(write_err))
             end
          end
       end)
@@ -167,8 +173,11 @@ function M.main(argv)
       resolve.cleanup(targets)
 
       if not ref_ok then
+         if type(ref_err) == "table" and ref_err.bail_msg ~= nil then
+            die(ref_err.bail_msg)
+         end
          local msg = tostring(ref_err)
-         if msg:find("interrupted") then
+         if msg:find("interrupted") ~= nil then
             os.exit(130)
          end
          die("benchmark error: " .. msg)

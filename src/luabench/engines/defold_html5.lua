@@ -59,15 +59,13 @@ end
 --- @return string|nil err Error message on failure.
 local function scaffold_html5_project(bench_file, targets, spec_name, opts)
    local defold = require("luabench.engines.defold")
-   local tmpdir, result_path = defold._scaffold_project(bench_file, targets, spec_name, opts)
+   local tmpdir, result_path = defold.scaffold_project(bench_file, targets, spec_name, opts)
    if tmpdir == nil then
       return nil, result_path
    end
 
    -- Clean up the desktop result_path (not needed for HTML5)
-   if result_path ~= nil then
-      pcall(os.remove, result_path)
-   end
+   pcall(os.remove, result_path)
 
    -- Overwrite test.script with HTML5 version
    local wrapper = generate_html5_wrapper(bench_file, targets, spec_name, opts)
@@ -85,8 +83,8 @@ end
 --- @return true|nil ok True if playwright found.
 --- @return string|nil err Error message if not found.
 local function check_playwright(node_path)
-   local ok, _, stderr = exec.run(quote_arg(node_path) .. " -e \"require('playwright')\"")
-   if not ok or (stderr and stderr:match("%S")) then
+   local ok = exec.run(quote_arg(node_path) .. " -e \"require('playwright')\"")
+   if not ok then
       return nil,
          "playwright not found"
             .. " (install with: npm install playwright"
@@ -118,12 +116,12 @@ end
 --- @return string|nil err Error message on failure.
 function M.run(runtime_path, bench_file, targets, spec_name, opts)
    local defold = require("luabench.engines.defold")
-   local java_ok, java_err = defold._check_java()
+   local java_ok, java_err = defold.check_java()
    if java_ok == nil then
       return nil, java_err
    end
 
-   local bob, bob_err = defold._locate_bob()
+   local bob, bob_err = defold.locate_bob()
    if bob == nil then
       return nil, bob_err
    end
@@ -201,11 +199,5 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
 
    return results
 end
-
--- Expose internals for testing
-M._generate_html5_wrapper = generate_html5_wrapper
-M._scaffold_html5_project = scaffold_html5_project
-M._check_playwright = check_playwright
-M._locate_harness = locate_harness
 
 return M

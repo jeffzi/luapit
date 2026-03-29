@@ -22,7 +22,7 @@ local ENGINES = {
 function M.detect(name)
    local basename = name:match("([^/\\]+)$") or name
    basename = basename:gsub("%.exe$", "")
-   if ENGINES[basename] then
+   if ENGINES[basename] ~= nil then
       return basename
    end
 end
@@ -92,7 +92,7 @@ function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
    parts[#parts + 1] = "         local original_path = package.path"
    parts[#parts + 1] = "         local snap = {}"
    parts[#parts + 1] = "         for k in pairs(package.loaded) do snap[k] = true end"
-   parts[#parts + 1] = subprocess._build_path_line(opts.lua_path, "         ")
+   parts[#parts + 1] = subprocess.build_path_line(opts.lua_path, "         ")
    parts[#parts + 1] = string.format("         local bench = dofile(%q)", bench_file)
    parts[#parts + 1] = "         if bench.fn ~= nil then bench = { [''] = bench } end"
    parts[#parts + 1] = string.format("         local spec = bench[%q]", spec_name)

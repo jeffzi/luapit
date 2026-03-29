@@ -113,7 +113,7 @@ function M.validate_targets(parsed_list, raw_specs)
    local seen = {} --- @type table<string, string>
    for i = 1, #parsed_list do
       local name = M.display_name(parsed_list[i])
-      if seen[name] then
+      if seen[name] ~= nil then
          return nil,
             string.format(
                "duplicate target name %q (from %q and %q)"
@@ -140,7 +140,7 @@ local function make_temp_dir(prefix)
    local sanitized = prefix:gsub("[^%w%-_]", "_")
    local dir_path = tmp .. "-luabench-" .. sanitized
    local ok, err = pldir.makepath(dir_path)
-   if not ok then
+   if ok == nil then
       return nil, err
    end
    return dir_path
@@ -206,7 +206,12 @@ end
 --- @return ResolvedTarget result Resolved target.
 local function resolve_bare_dot(alias)
    local git_root = capture("git rev-parse --show-toplevel 2>/dev/null")
-   local resolved_path = (git_root and git_root ~= "") and git_root or path.abspath(".")
+   local resolved_path
+   if git_root ~= nil and git_root ~= "" then
+      resolved_path = git_root
+   else
+      resolved_path = path.abspath(".")
+   end
    return {
       path = resolved_path,
       name = alias or "working-tree",
@@ -236,7 +241,7 @@ function M.resolve_targets(raw_specs)
    end
 
    local ok, err = M.validate_targets(parsed_list, raw_specs)
-   if not ok then
+   if ok == nil then
       return nil, err
    end
 
@@ -334,10 +339,5 @@ function M.prepare_targets(targets, cmd)
    end
    return result
 end
-
-M._exec_ok = exec_ok
-M._capture = capture
-M._resolve_bare_dot = resolve_bare_dot
-M._clone_repo = clone_repo
 
 return M

@@ -161,8 +161,4 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    return subprocess.read_json_results(result_path, cleanup, "engine")
 end
 
-M._CONF_TEMPLATE = CONF_TEMPLATE
-M._generate_love_wrapper = generate_love_wrapper
-M._scaffold_project = scaffold_project
-
 return M

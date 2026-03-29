@@ -145,23 +145,32 @@ describe("runner", function()
       assert.are_equal(captured_with_nil, captured_without)
    end)
 
-   --- Set up luamark and io stubs for run() tests.
+   --- Stub subprocess and io for run() tests.
+   --- @param fake_subprocess function|nil Custom subprocess stub (defaults to returning FAKE_RESULTS_PAIR).
    --- @return table spy_state, fun() teardown, fun() read_stderr
-   local function setup_run_stubs()
+   local function setup_run_stubs(fake_subprocess)
       local luamark = require("luamark")
+      local subprocess = require("luabench.subprocess")
       local originals = {
-         compare = luamark.compare_time,
          render = luamark.render,
+         run_subprocess = subprocess.run_subprocess,
          write = io.write,
          stderr = io.stderr,
       }
 
-      local spy_state = { compare_calls = {}, output = {} }
+      local spy_state = { subprocess_calls = {}, output = {} }
 
-      luamark.compare_time = function(funcs, opts)
-         spy_state.compare_calls[#spy_state.compare_calls + 1] = { funcs = funcs, opts = opts }
-         return FAKE_RESULTS_PAIR
-      end
+      subprocess.run_subprocess = fake_subprocess
+         or function(runtime_path, bench_file, targets, spec_name, opts)
+            spy_state.subprocess_calls[#spy_state.subprocess_calls + 1] = {
+               runtime_path = runtime_path,
+               bench_file = bench_file,
+               targets = targets,
+               spec_name = spec_name,
+               opts = opts,
+            }
+            return FAKE_RESULTS_PAIR
+         end
       luamark.render = function()
          return "rendered"
       end
@@ -171,7 +180,7 @@ describe("runner", function()
       io.stderr = io.tmpfile()
 
       local function teardown()
-         luamark.compare_time = originals.compare
+         subprocess.run_subprocess = originals.run_subprocess
          luamark.render = originals.render
          io.write = originals.write
          io.stderr:close()
@@ -188,17 +197,16 @@ describe("runner", function()
       return spy_state, teardown, read_stderr
    end
 
-   it("run calls compare_time with target specs and renders output with header", function()
+   local RUNTIME = "/usr/bin/lua"
+   local RUNTIME_OPTS = { runtime = RUNTIME }
+
+   it("run when given a bench file renders output with section header", function()
       local spy_state, teardown = setup_run_stubs()
 
-      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR)
+      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
-      assert.are_equal(1, #spy_state.compare_calls)
-      local compare_args = spy_state.compare_calls[1].funcs
-      assert.is_not_nil(compare_args["libv1"])
-      assert.is_not_nil(compare_args["libv2"])
       local combined = table.concat(spy_state.output)
       local header_prefix = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
       assert.matches(header_prefix, combined)
@@ -207,28 +215,32 @@ describe("runner", function()
       assert.is_table(results)
    end)
 
-   it("run skips benchmark when load_benchmark returns nil for all targets", function()
-      local spy_state, teardown = setup_run_stubs()
+   it("run when load_benchmark returns nil for all targets returns empty results", function()
+      local _, teardown = setup_run_stubs()
 
-      runner.run({ FIXTURE_DIR .. "/nonexistent_bench.lua" }, TARGETS_PAIR)
-
-      teardown()
-
-      assert.are_equal(0, #spy_state.compare_calls)
-   end)
-
-   it("run skips target when load fails and continues with remaining targets", function()
-      local spy_state, teardown = setup_run_stubs()
-
-      runner.run({ SORT_BENCH }, { TARGET_V1, { path = "/nonexistent/target", name = "bad" } })
+      local results =
+         runner.run({ FIXTURE_DIR .. "/nonexistent_bench.lua" }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
-      assert.are_equal(1, #spy_state.compare_calls)
-      assert.is_not_nil(spy_state.compare_calls[1].funcs["libv1"])
+      assert.are_same({}, results)
    end)
 
-   it("run includes error reason in skip warning when with_target errors", function()
+   it("run when one target fails to load runs with remaining valid targets", function()
+      local _, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         { TARGET_V1, { path = "/nonexistent/target", name = "bad" } },
+         RUNTIME_OPTS
+      )
+
+      teardown()
+
+      assert.are_equal(1, #results)
+   end)
+
+   it("run when a target fails to load includes error reason in stderr warning", function()
       local _, teardown, read_stderr = setup_run_stubs()
       local loader = require("luabench.loader")
       local original_load = loader.load_benchmark
@@ -236,7 +248,7 @@ describe("runner", function()
          error("deliberate load error")
       end
 
-      runner.run({ SORT_BENCH }, TARGETS_V1)
+      runner.run({ SORT_BENCH }, TARGETS_V1, RUNTIME_OPTS)
 
       local stderr_output = read_stderr()
       loader.load_benchmark = original_load
@@ -245,57 +257,43 @@ describe("runner", function()
       assert.matches("deliberate load error", stderr_output)
    end)
 
-   it("run handles named-Specs file calling compare_time per named Spec", function()
-      local spy_state, teardown = setup_run_stubs()
+   it("run when bench file has named specs returns results for each spec", function()
+      local _, teardown = setup_run_stubs()
       local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
 
-      runner.run({ multi_bench }, TARGETS_PAIR)
+      local results = runner.run({ multi_bench }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
-      assert.are_equal(2, #spy_state.compare_calls)
+      assert.are_equal(2, #results)
    end)
 
-   it("run forwards Spec hook fields to compare_time", function()
-      local spy_state, teardown = setup_run_stubs()
-      local hooks_bench = FIXTURE_DIR .. "/benchmarks/hooks_bench.lua"
-
-      runner.run({ hooks_bench }, TARGETS_V1)
-
-      teardown()
-
-      assert.are_equal(1, #spy_state.compare_calls)
-      local spec = spy_state.compare_calls[1].funcs["libv1"]
-      assert.is_function(spec.fn)
-      assert.is_function(spec.before)
-      assert.is_function(spec.after)
-      assert.is_true(spec.baseline)
-   end)
-
-   it("run collects spec names from all targets, not just the first", function()
-      local spy_state, teardown = setup_run_stubs()
+   it("run collects spec names from all targets not just the first", function()
+      local _, teardown = setup_run_stubs()
       local asym_bench = FIXTURE_DIR .. "/benchmarks/asymmetric_bench.lua"
 
-      runner.run({ asym_bench }, TARGETS_PAIR)
+      local results = runner.run({ asym_bench }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
-      assert.are_equal(2, #spy_state.compare_calls)
+      assert.are_equal(2, #results)
    end)
 
-   it("run catches compare_time errors and continues", function()
-      local _, teardown, read_stderr = setup_run_stubs()
-      local luamark = require("luamark")
+   it("run when one subprocess fails logs warning and continues with remaining", function()
       local call_count = 0
-      luamark.compare_time = function()
+      local _, teardown, read_stderr = setup_run_stubs(function()
          call_count = call_count + 1
          if call_count == 1 then
-            error("compare failed")
+            return nil, "subprocess failed"
          end
          return FAKE_RESULTS_V1
-      end
+      end)
 
-      runner.run({ SORT_BENCH, FIXTURE_DIR .. "/benchmarks/sort_bench.lua" }, TARGETS_PAIR)
+      runner.run(
+         { SORT_BENCH, FIXTURE_DIR .. "/benchmarks/sort_bench.lua" },
+         TARGETS_PAIR,
+         RUNTIME_OPTS
+      )
 
       local stderr_output = read_stderr()
       teardown()
@@ -306,7 +304,7 @@ describe("runner", function()
    it("run returns flat results array with file, spec, and targets fields", function()
       local _, teardown = setup_run_stubs()
 
-      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR)
+      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
@@ -320,10 +318,10 @@ describe("runner", function()
       assert.are_equal(2, #entry.targets)
    end)
 
-   it("run maps luamark Result fields to stat entries with ratio field", function()
+   it("run maps benchmark measurements to stat entries with ratio field", function()
       local _, teardown = setup_run_stubs()
 
-      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR)
+      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
@@ -343,7 +341,7 @@ describe("runner", function()
    it("run maps empty spec name to default in returned results", function()
       local _, teardown = setup_run_stubs()
 
-      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR)
+      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
@@ -351,186 +349,139 @@ describe("runner", function()
    end)
 
    it("run with multiple bench files returns results for all specs", function()
-      local spy_state, teardown = setup_run_stubs()
+      local _, teardown = setup_run_stubs()
       local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
 
-      local results = runner.run({ SORT_BENCH, multi_bench }, TARGETS_PAIR)
+      local results = runner.run({ SORT_BENCH, multi_bench }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
-      -- sort_bench has 1 spec, multi_bench has 2 specs = 3 compare_time calls
-      assert.are_equal(3, #spy_state.compare_calls)
       assert.are_equal(3, #results)
    end)
 
    it("run with opts.filters matching a pattern only runs matching benchmarks", function()
-      local spy_state, teardown = setup_run_stubs()
+      local _, teardown = setup_run_stubs()
       local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
-
-      runner.run({ SORT_BENCH, multi_bench }, TARGETS_PAIR, { filters = { "sort" } })
-
-      teardown()
-
-      -- sort_bench matches "sort", multi_bench specs (alpha, beta) do not
-      assert.are_equal(1, #spy_state.compare_calls)
-   end)
-
-   it("run with multiple filters uses OR logic", function()
-      local spy_state, teardown = setup_run_stubs()
-      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
-
-      runner.run({ SORT_BENCH, multi_bench }, TARGETS_PAIR, { filters = { "sort", "::a$" } })
-
-      teardown()
-
-      -- sort_bench matches "sort", multi_bench::a matches "::a$", multi_bench::b does not
-      assert.are_equal(2, #spy_state.compare_calls)
-   end)
-
-   it("run with empty filters runs all benchmarks", function()
-      local spy_state, teardown = setup_run_stubs()
-
-      runner.run({ SORT_BENCH }, TARGETS_PAIR, { filters = {} })
-
-      teardown()
-
-      assert.are_equal(1, #spy_state.compare_calls)
-   end)
-
-   it("run with filters eliminating all specs returns empty results without error", function()
-      local spy_state, teardown = setup_run_stubs()
 
       local results = runner.run(
-         { SORT_BENCH },
+         { SORT_BENCH, multi_bench },
          TARGETS_PAIR,
-         { filters = { "nonexistent_pattern" } }
+         { runtime = RUNTIME, filters = { "sort" } }
       )
 
       teardown()
 
-      assert.are_equal(0, #spy_state.compare_calls)
+      assert.are_equal(1, #results)
+   end)
+
+   it("run with multiple filters uses OR logic", function()
+      local _, teardown = setup_run_stubs()
+      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+
+      local results = runner.run(
+         { SORT_BENCH, multi_bench },
+         TARGETS_PAIR,
+         { runtime = RUNTIME, filters = { "sort", "::a$" } }
+      )
+
+      teardown()
+
+      assert.are_equal(2, #results)
+   end)
+
+   it("run with empty filters runs all benchmarks", function()
+      local _, teardown = setup_run_stubs()
+
+      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, { runtime = RUNTIME, filters = {} })
+
+      teardown()
+
+      assert.are_equal(1, #results)
+   end)
+
+   it("run with filters eliminating all specs returns empty results without error", function()
+      local _, teardown = setup_run_stubs()
+
+      local results = runner.run(
+         { SORT_BENCH },
+         TARGETS_PAIR,
+         { runtime = RUNTIME, filters = { "nonexistent_pattern" } }
+      )
+
+      teardown()
+
       assert.are_same({}, results)
    end)
 
-   it("run forwards rounds and params opts to compare_time", function()
+   it("run forwards rounds and params opts to subprocess", function()
       local spy_state, teardown = setup_run_stubs()
 
-      runner.run({ SORT_BENCH }, TARGETS_PAIR, { rounds = 1, params = { n = { 100 } } })
+      runner.run(
+         { SORT_BENCH },
+         TARGETS_PAIR,
+         { runtime = RUNTIME, rounds = 1, params = { n = { 100 } } }
+      )
 
       teardown()
 
-      assert.are_equal(1, #spy_state.compare_calls)
-      assert.are_equal(1, spy_state.compare_calls[1].opts.rounds)
-      assert.are_same({ n = { 100 } }, spy_state.compare_calls[1].opts.params)
+      local opts = spy_state.subprocess_calls[1].opts
+      assert.are_equal(1, opts.rounds)
+      assert.are_same({ n = { 100 } }, opts.params)
    end)
 
-   it("run does not forward internal-only keys to compare_time", function()
+   it("run does not forward internal-only keys to subprocess", function()
       local spy_state, teardown = setup_run_stubs()
 
-      runner.run({ SORT_BENCH }, TARGETS_PAIR, { rounds = 1, filters = { "sort" } })
+      runner.run(
+         { SORT_BENCH },
+         TARGETS_PAIR,
+         { runtime = RUNTIME, rounds = 1, filters = { "sort" } }
+      )
 
       teardown()
 
-      assert.are_equal(1, #spy_state.compare_calls)
-      local opts = spy_state.compare_calls[1].opts
+      local opts = spy_state.subprocess_calls[1].opts
       assert.are_equal(1, opts.rounds)
       assert.is_nil(opts.filters)
       assert.is_nil(opts.runtime)
    end)
 
-   --- Stub subprocess.run_subprocess for the duration of a test.
-   --- @param fake_fn function Replacement for subprocess.run_subprocess.
-   --- @return fun() restore Restores the original function.
-   local function stub_subprocess(fake_fn)
-      local subprocess = require("luabench.subprocess")
-      local original = subprocess.run_subprocess
-      subprocess.run_subprocess = fake_fn
-      return function()
-         subprocess.run_subprocess = original
-      end
-   end
-
-   it("run with opts.runtime calls subprocess.run_subprocess instead of compare_time", function()
+   it("run passes targets with path and name to subprocess", function()
       local spy_state, teardown = setup_run_stubs()
-      local subprocess_calls = {}
 
-      local restore = stub_subprocess(function(runtime_path, bench_file, targets, spec_name, opts)
-         subprocess_calls[#subprocess_calls + 1] = {
-            runtime_path = runtime_path,
-            bench_file = bench_file,
-            targets = targets,
-            spec_name = spec_name,
-            opts = opts,
-         }
-         return FAKE_RESULTS_PAIR
-      end)
+      runner.run({ SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
-      local results = runner.run(
-         { SORT_BENCH },
-         TARGETS_PAIR,
-         { runtime = "/usr/bin/lua", rounds = 1 }
-      )
-
-      restore()
       teardown()
 
-      assert.are_equal(0, #spy_state.compare_calls)
-      assert.are_equal(1, #subprocess_calls)
-      assert.are_equal("/usr/bin/lua", subprocess_calls[1].runtime_path)
-      assert.is_table(subprocess_calls[1].targets)
-      assert.are_equal(2, #subprocess_calls[1].targets)
-      assert.is_table(results)
-      assert.are_equal(1, #results)
+      local targets = spy_state.subprocess_calls[1].targets
+      assert.is_table(targets)
+      assert.are_equal(LIBV1_DIR, targets[1].path)
+      assert.are_equal("libv1", targets[1].name)
+      assert.are_equal(LIBV2_DIR, targets[2].path)
+      assert.are_equal("libv2", targets[2].name)
    end)
 
-   it("run with opts.runtime receives spec_targets with path and name", function()
-      local _, teardown = setup_run_stubs()
-      local captured_targets
-
-      local restore = stub_subprocess(function(_, _, targets)
-         captured_targets = targets
-         return FAKE_RESULTS_V1
-      end)
-
-      runner.run({ SORT_BENCH }, TARGETS_PAIR, { runtime = "/usr/bin/lua" })
-
-      restore()
-      teardown()
-
-      assert.is_table(captured_targets)
-      assert.are_equal(LIBV1_DIR, captured_targets[1].path)
-      assert.are_equal("libv1", captured_targets[1].name)
-      assert.are_equal(LIBV2_DIR, captured_targets[2].path)
-      assert.are_equal("libv2", captured_targets[2].name)
-   end)
-
-   it("run with opts.runtime handles subprocess error gracefully", function()
-      local _, teardown, read_stderr = setup_run_stubs()
-
-      local restore = stub_subprocess(function()
+   it("run when subprocess returns an error logs warning and returns empty results", function()
+      local _, teardown, read_stderr = setup_run_stubs(function()
          return nil, "subprocess failed"
       end)
 
-      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, { runtime = "/usr/bin/lua" })
+      local results = runner.run({ SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
       local stderr_output = read_stderr()
-      restore()
       teardown()
 
       assert.are_same({}, results)
       assert.matches("subprocess error", stderr_output)
    end)
 
-   it("run with opts.runtime re-raises subprocess interrupted error", function()
-      local _, teardown = setup_run_stubs()
-
-      local restore = stub_subprocess(function()
+   it("run when subprocess raises an interrupted error re-raises it", function()
+      local _, teardown = setup_run_stubs(function()
          return nil, "subprocess failed: interrupted!"
       end)
 
-      local ok, err = pcall(runner.run, { SORT_BENCH }, TARGETS_PAIR, { runtime = "/usr/bin/lua" })
+      local ok, err = pcall(runner.run, { SORT_BENCH }, TARGETS_PAIR, RUNTIME_OPTS)
 
-      restore()
       teardown()
 
       assert.is_false(ok)
@@ -551,62 +502,28 @@ describe("runner", function()
       end
    end
 
-   it("run with opts.engine_name calls adapter run instead of subprocess.run_subprocess", function()
-      local spy_state, teardown = setup_run_stubs()
-      local adapter_calls = {}
-      local subprocess_calls = {}
+   it("run with opts.engine_name uses the engine adapter and returns results", function()
+      local _, teardown = setup_run_stubs()
 
       local restore_engine = stub_engine_adapter({
-         run = function(runtime_path, bench_file, targets, spec_name, opts)
-            adapter_calls[#adapter_calls + 1] = {
-               runtime_path = runtime_path,
-               bench_file = bench_file,
-               targets = targets,
-               spec_name = spec_name,
-               opts = opts,
-            }
+         run = function()
             return FAKE_RESULTS_V1
          end,
       })
-      local restore_subprocess = stub_subprocess(function(...)
-         subprocess_calls[#subprocess_calls + 1] = { ... }
-         return FAKE_RESULTS_V1
-      end)
 
-      runner.run(
+      local results = runner.run(
          { SORT_BENCH },
          TARGETS_V1,
          { runtime = "/usr/bin/love", engine_name = "love", rounds = 1 }
       )
 
       restore_engine()
-      restore_subprocess()
       teardown()
 
-      assert.are_equal(1, #adapter_calls)
-      assert.are_equal(0, #subprocess_calls)
-      assert.are_equal(0, #spy_state.compare_calls)
+      assert.are_equal(1, #results)
    end)
 
-   it("run without opts.engine_name and with opts.runtime uses subprocess path", function()
-      local spy_state, teardown = setup_run_stubs()
-      local subprocess_calls = {}
-
-      local restore = stub_subprocess(function(...)
-         subprocess_calls[#subprocess_calls + 1] = { ... }
-         return FAKE_RESULTS_V1
-      end)
-
-      runner.run({ SORT_BENCH }, TARGETS_V1, { runtime = "/usr/bin/luajit", rounds = 1 })
-
-      restore()
-      teardown()
-
-      assert.are_equal(1, #subprocess_calls)
-      assert.are_equal(0, #spy_state.compare_calls)
-   end)
-
-   it("run with opts.engine_name does not forward engine_name to compare_opts", function()
+   it("run when using engine adapter does not forward engine_name in opts", function()
       local _, teardown = setup_run_stubs()
       local captured_opts
 
@@ -629,20 +546,5 @@ describe("runner", function()
       assert.is_not_nil(captured_opts)
       assert.is_nil(captured_opts.engine_name)
       assert.are_equal(1, captured_opts.rounds)
-   end)
-
-   it("run re-raises interrupt errors from compare_time", function()
-      local _, teardown = setup_run_stubs()
-      local luamark = require("luamark")
-      luamark.compare_time = function()
-         error("interrupted!")
-      end
-
-      local ok, err = pcall(runner.run, { SORT_BENCH }, TARGETS_PAIR)
-
-      teardown()
-
-      assert.is_false(ok)
-      assert.matches("interrupted", tostring(err))
    end)
 end)

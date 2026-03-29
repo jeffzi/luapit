@@ -145,7 +145,7 @@ local function load_targets(bench_file, targets, lua_paths)
       local result, load_err = M.with_target(target.path, function()
          return loader.load_benchmark(bench_file)
       end, lua_paths)
-      if result then
+      if result ~= nil then
          loaded[#loaded + 1] = {
             name = target.name,
             path = target.path,
@@ -223,7 +223,7 @@ end
 local function run_spec_subprocess(bench_id, info, spec_name, opts, compare_opts)
    local spec_targets = {}
    for j = 1, #info.loaded do
-      if info.loaded[j].result[spec_name] then
+      if info.loaded[j].result[spec_name] ~= nil then
          spec_targets[#spec_targets + 1] = {
             path = info.loaded[j].path,
             name = info.loaded[j].name,
@@ -237,7 +237,7 @@ local function run_spec_subprocess(bench_id, info, spec_name, opts, compare_opts
    local engine_name = opts.engine_name
    local err_label = engine_name and "engine error" or "subprocess error"
    local results = run_with_output(bench_id, function()
-      if engine_name then
+      if engine_name ~= nil then
          local adapter = engines.get_adapter(engine_name)
          return adapter.run(opts.runtime, info.bench_file, spec_targets, spec_name, compare_opts)
       end
@@ -250,7 +250,7 @@ local function run_spec_subprocess(bench_id, info, spec_name, opts, compare_opts
       )
    end, err_label)
 
-   if results then
+   if results ~= nil then
       return make_result_entry(info.rel_path, spec_name, results)
    end
 end
@@ -266,7 +266,7 @@ local function run_spec_inprocess(bench_id, info, spec_name, _, compare_opts)
    local funcs = {}
    for j = 1, #info.loaded do
       local entry = info.loaded[j]
-      if entry.result[spec_name] then
+      if entry.result[spec_name] ~= nil then
          funcs[entry.name] = entry.result[spec_name]
       end
    end
@@ -285,7 +285,7 @@ local function run_spec_inprocess(bench_id, info, spec_name, _, compare_opts)
       return res
    end, "benchmark error")
 
-   if results then
+   if results ~= nil then
       return make_result_entry(info.rel_path, spec_name, results)
    end
 end
@@ -331,7 +331,7 @@ function M.run(bench_files, targets, opts)
             local spec_name = info.spec_names[si]
             local bench_id = loader.bench_id(info.rel_path, spec_name)
             local entry = run_spec(bench_id, info, spec_name, opts, compare_opts)
-            if entry then
+            if entry ~= nil then
                all_results[#all_results + 1] = entry
             end
          end

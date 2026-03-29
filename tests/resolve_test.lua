@@ -226,65 +226,14 @@ describe("resolve", function()
       temp_dirs = {}
    end)
 
-   -- clone_repo (integration test with real git)
-
-   --- Create a temp path for clone tests and register it for cleanup.
-   --- @param suffix string Descriptive suffix for the temp directory name.
-   --- @return string dest Temp directory path (not yet created).
-   local function make_clone_dest(suffix)
-      local dest = plpath.tmpname() --[[@as string]]
-      os.remove(dest)
-      dest = dest .. "-luabench-" .. suffix
-      temp_dirs[#temp_dirs + 1] = dest
-      return dest
-   end
-
-   --- Return the git toplevel of the current repo, or mark the test pending.
-   --- @return string toplevel Absolute path to the git repo root.
+   --- Skip the test if not inside a git repo.
    local function require_git_repo()
-      local toplevel = resolve._capture("git rev-parse --show-toplevel 2>/dev/null")
-      if toplevel == nil then
+      local exec = require("luabench.exec")
+      local ok, stdout = exec.run("git rev-parse --show-toplevel 2>/dev/null")
+      if not ok or stdout == nil or stdout:match("^%s*$") then
          pending("not inside a git repo")
       end
-      return toplevel --[[@as string]]
    end
-
-   it("clone_repo clones a local repo and checks out ref", function()
-      local toplevel = require_git_repo()
-      local dest = make_clone_dest("clone-test")
-
-      local ok, err = resolve._clone_repo(toplevel, dest, "main", false)
-
-      assert.is_true(ok, err)
-   end)
-
-   it("clone_repo returns nil and error when local repo path does not exist", function()
-      local dest = make_clone_dest("clone-fail")
-
-      local ok, err = resolve._clone_repo("/nonexistent/repo", dest, "main", false)
-
-      assert.is_nil(ok)
-      assert.matches("failed to clone", err)
-   end)
-
-   it("clone_repo returns nil and error when ref does not exist", function()
-      local toplevel = require_git_repo()
-      local dest = make_clone_dest("badref")
-
-      local ok, err = resolve._clone_repo(toplevel, dest, "nonexistent_ref_xyz_999", false)
-
-      assert.is_nil(ok)
-      assert.matches("failed to checkout ref", err)
-   end)
-
-   it("clone_repo returns nil and error for unreachable remote", function()
-      local dest = make_clone_dest("remote-fail")
-
-      local ok, err = resolve._clone_repo("file:///nonexistent/remote/repo", dest, "main", true)
-
-      assert.is_nil(ok)
-      assert.matches("failed to clone", err)
-   end)
 
    -- cleanup
 

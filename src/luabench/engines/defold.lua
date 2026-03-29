@@ -97,9 +97,9 @@ end
 --- Check $BOB env var first, fall back to PATH lookup.
 --- @return string|nil path Path to bob.jar.
 --- @return string|nil err Error message if not found.
-local function locate_bob()
+function M.locate_bob()
    local bob = os.getenv("BOB")
-   if bob and bob ~= "" then
+   if bob ~= nil and bob ~= "" then
       return bob
    end
    local found = engines.find_command("bob.jar")
@@ -112,8 +112,8 @@ end
 --- Check that java is available in PATH.
 --- @return true|nil ok True if java found.
 --- @return string|nil err Error message if not found.
-local function check_java()
-   if engines.find_command("java") then
+function M.check_java()
+   if engines.find_command("java") ~= nil then
       return true
    end
    return nil, "java not found in PATH (required by Defold bob.jar)"
@@ -126,7 +126,7 @@ end
 --- @param opts table Options for compare_time (rounds, params).
 --- @return string|nil tmpdir Path to scaffolded project directory.
 --- @return string|nil result_path_or_err Result JSON path on success, error on failure.
-local function scaffold_project(bench_file, targets, spec_name, opts)
+function M.scaffold_project(bench_file, targets, spec_name, opts)
    local base = os.tmpname()
    os.remove(base)
    local tmpdir = base .. "_defold"
@@ -211,17 +211,17 @@ end
 --- @return table[]|nil results Parsed luamark results, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.run(runtime_path, bench_file, targets, spec_name, opts)
-   local java_ok, java_err = check_java()
+   local java_ok, java_err = M.check_java()
    if java_ok == nil then
       return nil, java_err
    end
 
-   local bob, bob_err = locate_bob()
+   local bob, bob_err = M.locate_bob()
    if bob == nil then
       return nil, bob_err
    end
 
-   local tmpdir, result_path = scaffold_project(bench_file, targets, spec_name, opts)
+   local tmpdir, result_path = M.scaffold_project(bench_file, targets, spec_name, opts)
    if tmpdir == nil then
       return nil, result_path -- result_path holds error message on failure
    end
@@ -257,15 +257,5 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
 
    return subprocess.read_json_results(result_path, cleanup, "Defold process")
 end
-
--- Expose internals for testing
-M._GAME_PROJECT = GAME_PROJECT
-M._MAIN_COLLECTION = MAIN_COLLECTION
-M._TEST_GO = TEST_GO
-M._INPUT_BINDING = INPUT_BINDING
-M._generate_defold_wrapper = generate_defold_wrapper
-M._scaffold_project = scaffold_project
-M._locate_bob = locate_bob
-M._check_java = check_java
 
 return M

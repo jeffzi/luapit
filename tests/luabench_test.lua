@@ -10,6 +10,27 @@ describe("luabench", function()
    local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
    local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
 
+   local FAKE_RESULTS_PAIR = {
+      {
+         name = "libv1",
+         median = 0.001,
+         ci_lower = 0.0009,
+         ci_upper = 0.0011,
+         rounds = 100,
+         rank = 1,
+         relative = 1.0,
+      },
+      {
+         name = "libv2",
+         median = 0.002,
+         ci_lower = 0.0019,
+         ci_upper = 0.0021,
+         rounds = 100,
+         rank = 2,
+         relative = 2.0,
+      },
+   }
+
    before_each(function()
       luabench = require("luabench")
    end)
@@ -92,40 +113,36 @@ describe("luabench", function()
    it("discover feeds bench files into runner for full pipeline", function()
       local discover_mod = require("luabench.discover")
       local runner_mod = require("luabench.runner")
+      local subprocess_mod = require("luabench.subprocess")
       local luamark = require("luamark")
 
-      local original_compare = luamark.compare_time
+      local original_run_subprocess = subprocess_mod.run_subprocess
       local original_render = luamark.render
-      local compare_called = false
-      local compare_args
+      local original_write = io.write
 
-      luamark.compare_time = function(funcs)
-         compare_called = true
-         compare_args = funcs
-         return {}
+      subprocess_mod.run_subprocess = function()
+         return FAKE_RESULTS_PAIR
       end
       luamark.render = function()
          return "rendered"
       end
-
-      local original_write = io.write
       io.write = function() end
 
       local bench_files = discover_mod.discover({
          FIXTURE_DIR .. "/benchmarks/sort_bench.lua",
       })
-      runner_mod.run(
+      local results = runner_mod.run(
          bench_files,
-         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } }
+         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
+         { runtime = "/usr/bin/lua" }
       )
 
-      luamark.compare_time = original_compare
+      subprocess_mod.run_subprocess = original_run_subprocess
       luamark.render = original_render
       io.write = original_write
 
-      assert.is_true(compare_called)
-      assert.is_not_nil(compare_args["libv1"])
-      assert.is_not_nil(compare_args["libv2"])
+      assert.are_equal(1, #results)
+      assert.are_equal(2, #results[1].targets)
    end)
 
    local DEFAULT_RESOLVED = {
@@ -378,30 +395,6 @@ describe("luabench", function()
       assert.are_same(resolved, s.state.run_called_with.targets)
    end)
 
-   it("_parse_params coerces numbers booleans and passes strings through", function()
-      local params = luabench._parse_params({ "n:1000", "flag:true", "other:false", "name:hello" })
-
-      assert.are_same({
-         n = { 1000 },
-         flag = { true },
-         other = { false },
-         name = { "hello" },
-      }, params)
-   end)
-
-   it("_parse_params with repeated name accumulates values", function()
-      local params = luabench._parse_params({ "n:100", "n:1000" })
-
-      assert.are_same({ n = { 100, 1000 } }, params)
-   end)
-
-   it("_parse_params with invalid format returns nil and error", function()
-      local params, err = luabench._parse_params({ "bad" })
-
-      assert.is_nil(params)
-      assert.matches("invalid parameter format", err)
-   end)
-
    --- Helper: setup stubs with a run spy that captures args, call main, teardown.
    --- @param cli_args table CLI arguments to pass to main.
    --- @return table opts The opts table passed to runner.run.
@@ -433,10 +426,32 @@ describe("luabench", function()
       assert.are_same({ "sort", "hash" }, opts.filters)
    end)
 
-   it("main with -p passes opts.params to runner.run", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main", "-p", "n:1000" })
+   it("main with -p converts numeric and boolean strings and passes params to runner", function()
+      local opts = run_main_capturing_opts({
+         "ref",
+         ".#main",
+         "-p",
+         "n:1000",
+         "-p",
+         "flag:true",
+         "-p",
+         "other:false",
+         "-p",
+         "name:hello",
+      })
 
-      assert.are_same({ n = { 1000 } }, opts.params)
+      assert.are_same({
+         n = { 1000 },
+         flag = { true },
+         other = { false },
+         name = { "hello" },
+      }, opts.params)
+   end)
+
+   it("main with repeated -p name accumulates values into list", function()
+      local opts = run_main_capturing_opts({ "ref", ".#main", "-p", "n:100", "-p", "n:1000" })
+
+      assert.are_same({ n = { 100, 1000 } }, opts.params)
    end)
 
    it("main with combined flags passes combined opts", function()
@@ -448,10 +463,13 @@ describe("luabench", function()
       assert.are_same({ n = { 100 } }, opts.params)
    end)
 
-   it("main without optional flags passes empty opts to runner.run", function()
+   it("main without optional flags auto-detects runtime and passes it in opts", function()
       local opts = run_main_capturing_opts({ "ref", ".#main" })
 
-      assert.are_same({}, opts)
+      assert.is_string(opts.runtime)
+      assert.is_nil(opts.rounds)
+      assert.is_nil(opts.filters)
+      assert.is_nil(opts.params)
    end)
 
    it("main with --lua-path strips trailing slashes and passes opts.lua_path", function()
@@ -530,17 +548,62 @@ describe("luabench", function()
       assert.is_nil(s.state.write_json_called)
    end)
 
-   --- Helper: stub subprocess.resolve_runtime for -R tests, returning restore fn.
-   local function stub_subprocess_runtime(fake_resolve)
+   --- Helper: stub a subprocess module function, returning restore fn.
+   --- @param field string Field name on luabench.subprocess to replace.
+   --- @param fake function Replacement function.
+   --- @return fun() restore Restores the original function.
+   local function stub_subprocess_fn(field, fake)
       local subprocess_mod = require("luabench.subprocess")
-      local original = subprocess_mod.resolve_runtime
-      subprocess_mod.resolve_runtime = fake_resolve
+      local original = subprocess_mod[field]
+      subprocess_mod[field] = fake
       return function()
-         subprocess_mod.resolve_runtime = original
+         subprocess_mod[field] = original
       end
    end
 
-   it("main with -R calls subprocess.resolve_runtime and sets opts.runtime", function()
+   local function stub_subprocess_runtime(fake_resolve)
+      return stub_subprocess_fn("resolve_runtime", fake_resolve)
+   end
+
+   local function stub_detect_runtime(fake_detect)
+      return stub_subprocess_fn("detect_runtime", fake_detect)
+   end
+
+   it("main without -R auto-detects and passes runtime to runner", function()
+      local restore = stub_detect_runtime(function()
+         return "/usr/bin/lua"
+      end)
+
+      local opts = run_main_capturing_opts({ "ref", ".#main" })
+
+      restore()
+
+      assert.are_equal("/usr/bin/lua", opts.runtime)
+   end)
+
+   it("main without -R exits 1 when runtime cannot be auto-detected", function()
+      local restore = stub_detect_runtime(function()
+         return nil, "cannot detect runtime: arg table is not available"
+      end)
+      local s
+      s = setup_main_stubs({
+         exit = function(code)
+            s.state.exit_code = code
+            error("EXIT")
+         end,
+      })
+
+      pcall(luabench.main, { "ref", ".#main" })
+
+      local stderr_output = s.read_stderr()
+      restore()
+      s.teardown()
+
+      assert.are_equal(1, s.state.exit_code)
+      assert.matches("cannot detect runtime", stderr_output)
+   end)
+
+   it("main with -R resolves named runtime and passes it to runner", function()
       local restore = stub_subprocess_runtime(function(name)
          return "/usr/local/bin/" .. name
       end)

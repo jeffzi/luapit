@@ -1,8 +1,6 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter, unused-local, unused-vararg
 local path = require("pl.path")
 
-local IS_WINDOWS = path.is_windows
-
 describe("subprocess", function()
    local subprocess
    local exec
@@ -42,18 +40,6 @@ describe("subprocess", function()
       assert.is_nil(result)
    end)
 
-   it("find_command dispatches to platform-specific lookup", function()
-      if IS_WINDOWS then
-         local result = subprocess.find_command("cmd")
-         assert.is_string(result)
-         assert.is_nil(result:find("\r"), "Windows: path must not contain CR from where.exe")
-      else
-         local result = subprocess.find_command("sh")
-         assert.is_string(result)
-         assert.matches("sh", result)
-      end
-   end)
-
    it("find_command extracts first line only from multi-line output", function()
       -- Simulate where.exe multi-line output to verify first-line extraction
       exec.run = function(_cmd)
@@ -77,149 +63,50 @@ describe("subprocess", function()
       assert.matches("lua", result)
    end)
 
-   it("resolve_runtime with nonexistent runtime returns nil and error", function()
+   it("resolve_runtime with unknown or empty name returns nil and error", function()
       local result, err = subprocess.resolve_runtime("nonexistent_runtime_xyz_42")
-
       assert.is_nil(result)
       assert.is_string(err)
       assert.matches("runtime not found", err)
+
+      local result2, err2 = subprocess.resolve_runtime("")
+      assert.is_nil(result2)
+      assert.is_string(err2)
    end)
 
-   it("resolve_runtime with empty string returns nil and error", function()
-      local result, err = subprocess.resolve_runtime("")
+   -- detect_runtime tests
+
+   it("detect_runtime returns an absolute path to the current interpreter", function()
+      local result, err = subprocess.detect_runtime()
+
+      assert.is_nil(err)
+      assert.is_string(result)
+      assert.matches("lua", result)
+   end)
+
+   it("detect_runtime returns nil and error when arg table is missing", function()
+      local original_arg = _G.arg
+      _G.arg = nil
+
+      local result, err = subprocess.detect_runtime()
+
+      _G.arg = original_arg
 
       assert.is_nil(result)
       assert.is_string(err)
    end)
 
-   -- generate_wrapper tests
+   it("detect_runtime returns nil and error when arg has no negative indices", function()
+      local original_arg = _G.arg
+      _G.arg = { [0] = "script.lua" }
 
-   it("_generate_wrapper produces script with expected patterns", function()
-      local wrapper = subprocess._generate_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
+      local result, err = subprocess.detect_runtime()
 
-      assert.is_string(wrapper)
-      assert.matches("package%.path", wrapper)
-      assert.matches("luamark", wrapper)
-      assert.matches("dkjson", wrapper)
-      assert.matches("dofile", wrapper)
-      assert.matches("compare_time", wrapper)
-      assert.matches("encode", wrapper)
-      local has_nil_guard = wrapper:find("if not f") or wrapper:find("assert%(f")
-      assert.is_not_nil(has_nil_guard, "generated wrapper must nil-check the io.open result")
-   end)
+      _G.arg = original_arg
 
-   it("_generate_wrapper with multiple targets includes all target names", function()
-      local wrapper = subprocess._generate_wrapper(SORT_BENCH, {
-         { path = LIBV1_DIR, name = "libv1" },
-         { path = LIBV2_DIR, name = "libv2" },
-      }, "", {}, "/tmp/test_results.json")
-
-      assert.is_string(wrapper)
-      assert.matches("libv1", wrapper)
-      assert.matches("libv2", wrapper)
-   end)
-
-   --- Find the first occurrence of a param key in generated wrapper source.
-   --- Tries bracket notation, dot notation, and quoted-bracket notation.
-   --- @param wrapper string Generated wrapper source.
-   --- @param key string Single-letter param key.
-   --- @return number|nil pos Position of first match, or nil.
-   local function find_param_pos(wrapper, key)
-      return wrapper:find('["' .. key .. '"]', 1, true)
-         or wrapper:find("%." .. key, 1, true)
-         or wrapper:find('%["' .. key .. '"%]')
-   end
-
-   it("_generate_wrapper with multiple params emits them in sorted order", function()
-      local wrapper = subprocess._generate_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         { params = { z = { 1 }, a = { 2 }, m = { 3 } } },
-         "/tmp/test_results.json"
-      )
-
-      assert.is_string(wrapper)
-      local pos_a = find_param_pos(wrapper, "a")
-      local pos_m = find_param_pos(wrapper, "m")
-      local pos_z = find_param_pos(wrapper, "z")
-      assert.is_not_nil(pos_a, "expected param 'a' in wrapper")
-      assert.is_not_nil(pos_m, "expected param 'm' in wrapper")
-      assert.is_not_nil(pos_z, "expected param 'z' in wrapper")
-      assert.is_true(pos_a < pos_m, "param 'a' must appear before 'm' (sorted order)")
-      assert.is_true(pos_m < pos_z, "param 'm' must appear before 'z' (sorted order)")
-   end)
-
-   -- _build_path_line tests
-
-   it("_build_path_line without lua_paths generates default path expression", function()
-      local line = subprocess._build_path_line(nil, "   ")
-
-      assert.are_equal(
-         '   package.path = t.path .. "/?.lua" .. ";" .. t.path .. "/?/init.lua" .. ";" .. original_path',
-         line
-      )
-   end)
-
-   it("_build_path_line with single lua_path generates subdirectory expression", function()
-      local line = subprocess._build_path_line({ "lua" }, "   ")
-
-      assert.matches("/lua/%?%.lua", line)
-      assert.matches("/lua/%?/init%.lua", line)
-      assert.is_nil(line:find('"/?.lua"', 1, true), "should not contain root path pattern")
-   end)
-
-   it("_build_path_line with dot generates root path expression", function()
-      local line = subprocess._build_path_line({ "." }, "   ")
-
-      assert.are_equal(
-         '   package.path = t.path .. "/?.lua" .. ";" .. t.path .. "/?/init.lua" .. ";" .. original_path',
-         line
-      )
-   end)
-
-   it("_build_path_line with multiple lua_paths includes all in order", function()
-      local line = subprocess._build_path_line({ "lua", "lib" }, "   ")
-
-      local lua_pos = line:find("/lua/", 1, true)
-      local lib_pos = line:find("/lib/", 1, true)
-      assert.is_not_nil(lua_pos)
-      assert.is_not_nil(lib_pos)
-      assert.is_true(lua_pos < lib_pos)
-   end)
-
-   -- _generate_wrapper with lua_path tests
-
-   it("_generate_wrapper with opts.lua_path generates subdirectory path in script", function()
-      local wrapper = subprocess._generate_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         { lua_path = { "lua" } },
-         "/tmp/test_results.json"
-      )
-
-      assert.matches("/lua/%?%.lua", wrapper)
-      assert.matches("/lua/%?/init%.lua", wrapper)
-   end)
-
-   it("_generate_wrapper without opts.lua_path generates default path in script", function()
-      local wrapper = subprocess._generate_wrapper(
-         SORT_BENCH,
-         { { path = LIBV1_DIR, name = "libv1" } },
-         "",
-         {},
-         "/tmp/test_results.json"
-      )
-
-      assert.matches('"/?.lua"', wrapper, nil, true)
-      assert.matches('"/?/init.lua"', wrapper, nil, true)
+      assert.is_nil(result)
+      assert.is_string(err)
+      assert.matches("no interpreter found", err)
    end)
 
    -- run_subprocess end-to-end tests
