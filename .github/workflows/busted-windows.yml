@@ -1,0 +1,42 @@
+name: Busted (Windows)
+
+on: [push, pull_request]
+
+jobs:
+  busted:
+    strategy:
+      fail-fast: false
+      matrix:
+        luaVersion: ["5.1", "luajit-2.1"]
+        os: [windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: ${{ matrix.luaVersion }}
+
+      - name: Setup LuaRocks
+        uses: leafo/gh-actions-luarocks@v6
+        with:
+          luaRocksVersion: "3.13.0"
+
+      - name: Setup dependencies
+        run: |
+          luarocks install busted
+          luarocks install penlight
+          luarocks install luamark
+          luarocks install argparse --dev
+          luarocks install dkjson
+          luarocks install chronos
+          luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
+
+      - name: Run tests
+        run: busted -o utfTerminal
