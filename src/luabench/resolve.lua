@@ -66,6 +66,17 @@ function M.parse_target(spec)
       return { alias = alias, local_dir = path.abspath(rest) }
    end
 
+   local hash_ref = rest:match("^#(.+)$")
+   if hash_ref then
+      return nil,
+         string.format(
+            "invalid target: %q\n  Detected ref %q without a repo -- did you mean '.#%s'?",
+            spec,
+            hash_ref,
+            hash_ref
+         )
+   end
+
    return nil,
       string.format(
          "invalid target: %q\n  Expected format: [alias=][repo]#ref or existing directory path\n"

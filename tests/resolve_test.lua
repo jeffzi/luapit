@@ -91,6 +91,25 @@ describe("resolve", function()
       assert.matches("invalid target", err)
    end)
 
+   for _, case in ipairs({
+      { desc = "ref only", input = "#abc123", ref = "abc123" },
+      { desc = "aliased ref only", input = "old=#abc123", ref = "abc123" },
+   }) do
+      it(
+         "parse_target when spec is "
+            .. case.desc
+            .. " returns nil and error hinting local-repo form",
+         function()
+            local parsed, err = resolve.parse_target(case.input)
+
+            assert.is_nil(parsed)
+            assert.is_string(err)
+            assert.matches(case.ref, err, 1, true)
+            assert.matches("%.#" .. case.ref, err)
+         end
+      )
+   end
+
    -- display_name derivation
 
    for _, case in ipairs({
