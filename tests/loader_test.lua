@@ -3,7 +3,7 @@ local path = require("pl.path")
 
 local loader = require("luabench.loader")
 
-local FIXTURE_DIR = path.currentdir() .. "/tests/fixtures"
+local FIXTURE_DIR = path.join(path.currentdir(), "tests", "fixtures")
 
 describe("loader", function()
    local original_stderr
@@ -28,7 +28,7 @@ describe("loader", function()
    -- load_benchmark: normalized spec map
 
    it("load_benchmark with single Spec file returns spec keyed by empty string", function()
-      local filepath = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
+      local filepath = path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua")
 
       local result = loader.load_benchmark(filepath)
 
@@ -38,7 +38,7 @@ describe("loader", function()
    end)
 
    it("load_benchmark with named Specs file returns specs keyed by name", function()
-      local filepath = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+      local filepath = path.join(FIXTURE_DIR, "benchmarks", "multi_bench.lua")
 
       local result = loader.load_benchmark(filepath)
 

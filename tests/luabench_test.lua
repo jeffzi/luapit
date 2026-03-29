@@ -6,9 +6,9 @@ describe("luabench", function()
    local luabench
 
    local CWD = path.currentdir()
-   local FIXTURE_DIR = CWD .. "/tests/fixtures"
-   local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
-   local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
+   local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
+   local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
+   local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
 
    local FAKE_RESULTS_PAIR = {
       {
@@ -129,7 +129,7 @@ describe("luabench", function()
       io.write = function() end
 
       local bench_files = discover_mod.discover({
-         FIXTURE_DIR .. "/benchmarks/sort_bench.lua",
+         path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua"),
       })
       local results = runner_mod.run(
          bench_files,
@@ -160,6 +160,7 @@ describe("luabench", function()
       local discover_mod = require("luabench.discover")
       local runner_mod = require("luabench.runner")
       local export_mod = require("luabench.export")
+      local subprocess_mod = require("luabench.subprocess")
 
       local originals = {
          resolve_targets = resolve_mod.resolve_targets,
@@ -168,6 +169,7 @@ describe("luabench", function()
          discover = discover_mod.discover,
          run = runner_mod.run,
          write_json = export_mod.write_json,
+         detect_runtime = subprocess_mod.detect_runtime,
          exit = os.exit,
          stderr = io.stderr,
          write = io.write,
@@ -194,6 +196,10 @@ describe("luabench", function()
       runner_mod.run = overrides.run or function()
          return {}
       end
+      subprocess_mod.detect_runtime = overrides.detect_runtime
+         or function()
+            return "/usr/bin/lua"
+         end
 
       if overrides.write_json then
          export_mod.write_json = overrides.write_json
@@ -210,6 +216,7 @@ describe("luabench", function()
          discover_mod.discover = originals.discover
          runner_mod.run = originals.run
          export_mod.write_json = originals.write_json
+         subprocess_mod.detect_runtime = originals.detect_runtime
          os.exit = originals.exit
          io.stderr:close()
          io.stderr = originals.stderr
@@ -565,28 +572,18 @@ describe("luabench", function()
       return stub_subprocess_fn("resolve_runtime", fake_resolve)
    end
 
-   local function stub_detect_runtime(fake_detect)
-      return stub_subprocess_fn("detect_runtime", fake_detect)
-   end
-
    it("main without -R auto-detects and passes runtime to runner", function()
-      local restore = stub_detect_runtime(function()
-         return "/usr/bin/lua"
-      end)
-
       local opts = run_main_capturing_opts({ "ref", ".#main" })
-
-      restore()
 
       assert.are_equal("/usr/bin/lua", opts.runtime)
    end)
 
    it("main without -R exits 1 when runtime cannot be auto-detected", function()
-      local restore = stub_detect_runtime(function()
-         return nil, "cannot detect runtime: arg table is not available"
-      end)
       local s
       s = setup_main_stubs({
+         detect_runtime = function()
+            return nil, "cannot detect runtime: arg table is not available"
+         end,
          exit = function(code)
             s.state.exit_code = code
             error("EXIT")
@@ -596,7 +593,6 @@ describe("luabench", function()
       pcall(luabench.main, { "ref", ".#main" })
 
       local stderr_output = s.read_stderr()
-      restore()
       s.teardown()
 
       assert.are_equal(1, s.state.exit_code)

@@ -264,11 +264,17 @@ local function stream_fallback(cmd)
       return check_exit(what, code)
    end
    -- Lua 5.1/LuaJIT: rc is raw wait status from system()
-   -- Check if child was killed by signal 2 (SIGINT)
+   if IS_WINDOWS then
+      -- On Windows, system() returns the exit code directly.
+      if rc == SIGINT_EXIT then
+         raise_interrupted()
+      end
+      return rc == 0
+   end
+   -- On POSIX, rc encodes signal in low bits, exit code in upper bits.
    if rc % 128 == SIGINT then
       raise_interrupted()
    end
-   -- Check if shell exited 130 (128 + SIGINT)
    local exit_code = math.floor(rc / 256)
    if exit_code == SIGINT_EXIT then
       raise_interrupted()

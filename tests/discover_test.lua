@@ -4,7 +4,7 @@ describe("discover", function()
    local discover
 
    local FIXTURES_DIR = "tests/fixtures/benchmarks"
-   local ABS_FIXTURES = path.currentdir() .. "/" .. FIXTURES_DIR
+   local ABS_FIXTURES = path.abspath(FIXTURES_DIR)
 
    before_each(function()
       discover = require("luabench.discover").discover
@@ -17,13 +17,13 @@ describe("discover", function()
    end)
 
    it("returns absolute path for a single bench file", function()
-      local result = discover({ FIXTURES_DIR .. "/sort_bench.lua" })
+      local result = discover({ path.join(FIXTURES_DIR, "sort_bench.lua") })
 
-      assert.are_same({ ABS_FIXTURES .. "/sort_bench.lua" }, result)
+      assert.are_same({ path.join(ABS_FIXTURES, "sort_bench.lua") }, result)
    end)
 
    it("ignores non-benchmark lua files", function()
-      local result = discover({ FIXTURES_DIR .. "/helper.lua" })
+      local result = discover({ path.join(FIXTURES_DIR, "helper.lua") })
 
       assert.are_same({}, result)
    end)
@@ -53,8 +53,8 @@ describe("discover", function()
 
    it("accepts a mix of files and directories", function()
       local result = discover({
-         FIXTURES_DIR .. "/sort_bench.lua",
-         FIXTURES_DIR .. "/sub",
+         path.join(FIXTURES_DIR, "sort_bench.lua"),
+         path.join(FIXTURES_DIR, "sub"),
       })
 
       assert.are_equal(2, #result)

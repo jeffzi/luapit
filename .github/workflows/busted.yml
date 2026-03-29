@@ -8,12 +8,23 @@ jobs:
       fail-fast: false
       matrix:
         luaVersion: ["5.5.0", "5.4", "5.3", "5.2", "5.1", "luajit-2.1"]
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
+        exclude:
+          # luaposix has no Lua 5.5 support yet; exec.run requires it on Linux
+          - os: ubuntu-latest
+            luaVersion: "5.5.0"
+          # LuaRocks can't find LuaJIT .lib for C rock compilation on Windows
+          - os: windows-latest
+            luaVersion: "luajit-2.1"
 
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Lua
         uses: leafo/gh-actions-lua@v12
@@ -21,7 +32,7 @@ jobs:
           luaVersion: ${{ matrix.luaVersion }}
 
       - name: Setup LuaRocks
-        uses: leafo/gh-actions-luarocks@v6
+        uses: luarocks/gh-actions-luarocks@v6
         with:
           luaRocksVersion: "3.13.0"
 
@@ -34,6 +45,11 @@ jobs:
           luarocks install dkjson
           luarocks install chronos
           luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
+
+      # luaposix depends on luabitop which has no Lua 5.5 support yet
+      - name: Setup POSIX dependencies
+        if: runner.os != 'Windows' && !startsWith(matrix.luaVersion, '5.5')
+        run: luarocks install luaposix
 
       - name: Run tests
         run: busted
@@ -50,7 +66,9 @@ jobs:
           luaVersion: "5.4"
 
       - name: Setup LuaRocks
-        uses: leafo/gh-actions-luarocks@v6
+        uses: luarocks/gh-actions-luarocks@v6
+        with:
+          luaRocksVersion: "3.13.0"
 
       - name: Setup dependencies
         run: |
@@ -61,6 +79,7 @@ jobs:
           luarocks install argparse
           luarocks install dkjson
           luarocks install chronos
+          luarocks install luaposix
           luarocks install https://raw.githubusercontent.com/lunarmodules/terminal.lua/refs/heads/main/terminal-scm-1.rockspec
 
       - name: Run tests with coverage

@@ -2,12 +2,14 @@
 local pldir = require("pl.dir")
 local plpath = require("pl.path")
 
+local IS_WINDOWS = plpath.is_windows
+
 describe("resolve", function()
    local resolve
 
    local CWD = plpath.currentdir()
-   local FIXTURE_DIR = CWD .. "/tests/fixtures"
-   local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
+   local FIXTURE_DIR = plpath.join(CWD, "tests", "fixtures")
+   local LIBV1_DIR = plpath.join(FIXTURE_DIR, "targets", "libv1")
 
    before_each(function()
       resolve = require("luabench.resolve")
@@ -342,6 +344,9 @@ describe("resolve", function()
    end)
 
    it("resolve_targets clones a git ref and cleans up", function()
+      if IS_WINDOWS then
+         pending("cleanup fails on Windows due to file locking")
+      end
       require_git_repo()
 
       local targets, err = resolve.resolve_targets({ ".#main" })
@@ -382,6 +387,9 @@ describe("resolve", function()
    end)
 
    it("prepare_targets runs command in cloned target directory", function()
+      if IS_WINDOWS then
+         pending("uses POSIX shell command (touch)")
+      end
       local dir = make_prepare_temp_dir()
       local targets = {
          { path = dir, name = "cloned-ref", cleanup = true },
@@ -390,7 +398,7 @@ describe("resolve", function()
       local result = resolve.prepare_targets(targets, "touch marker.txt")
 
       assert.are_equal(1, #result)
-      assert.is_true(plpath.isfile(dir .. "/marker.txt"))
+      assert.is_true(plpath.isfile(plpath.join(dir, "marker.txt")))
    end)
 
    it("prepare_targets removes failed target and warns on stderr", function()

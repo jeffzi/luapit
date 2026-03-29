@@ -2,6 +2,9 @@
 
 local IS_WINDOWS = require("pl.path").is_windows
 
+local TRUE_CMD = IS_WINDOWS and "cmd /c exit 0" or "true"
+local FALSE_CMD = IS_WINDOWS and "cmd /c exit 1" or "false"
+
 describe("exec", function()
    local exec
    local original_popen
@@ -31,7 +34,7 @@ describe("exec", function()
       assert.matches("hello", stdout)
       assert.are_equal("", stderr)
 
-      local ok2, stdout2, stderr2 = exec.run("true")
+      local ok2, stdout2, stderr2 = exec.run(TRUE_CMD)
       assert.is_true(ok2)
       assert.are_equal("", stdout2)
       assert.are_equal("", stderr2)
@@ -92,16 +95,16 @@ describe("exec", function()
       simulate_parent_death()
 
       assert.has_error(function()
-         exec.run("true")
+         exec.run(TRUE_CMD)
       end, "interrupted!")
    end)
 
    it("stream returns true on success and false on failure with no extra values", function()
-      local ok, extra = exec.stream("true")
+      local ok, extra = exec.stream(TRUE_CMD)
       assert.is_true(ok)
       assert.is_nil(extra)
 
-      local ok2 = exec.stream("false")
+      local ok2 = exec.stream(FALSE_CMD)
       assert.is_false(ok2)
    end)
 
@@ -121,7 +124,7 @@ describe("exec", function()
       simulate_parent_death()
 
       assert.has_error(function()
-         exec.stream("true")
+         exec.stream(TRUE_CMD)
       end, "interrupted!")
    end)
 end)

@@ -7,10 +7,10 @@ describe("subprocess", function()
    local original_exec_run
 
    local CWD = path.currentdir()
-   local FIXTURE_DIR = CWD .. "/tests/fixtures"
-   local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
-   local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
-   local SORT_BENCH = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
+   local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
+   local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
+   local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
+   local SORT_BENCH = path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua")
 
    before_each(function()
       exec = require("luabench.exec")
@@ -77,6 +77,9 @@ describe("subprocess", function()
    -- detect_runtime tests
 
    it("detect_runtime returns an absolute path to the current interpreter", function()
+      if path.is_windows then
+         pending("where.exe cannot find lua in CI non-standard PATH")
+      end
       local result, err = subprocess.detect_runtime()
 
       assert.is_nil(err)

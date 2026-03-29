@@ -6,10 +6,10 @@ describe("runner", function()
    local runner
 
    local CWD = path.currentdir()
-   local FIXTURE_DIR = CWD .. "/tests/fixtures"
-   local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
-   local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
-   local SORT_BENCH = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
+   local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
+   local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
+   local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
+   local SORT_BENCH = path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua")
 
    local TARGET_V1 = { path = LIBV1_DIR, name = "libv1" }
    local TARGET_V2 = { path = LIBV2_DIR, name = "libv2" }
@@ -98,7 +98,7 @@ describe("runner", function()
    end)
 
    it("with_target with lua_paths resolves modules from subdirectory", function()
-      local LIB_SUB_DIR = FIXTURE_DIR .. "/targets/lib_sub"
+      local LIB_SUB_DIR = path.join(FIXTURE_DIR, "targets", "lib_sub")
 
       local result
       runner.with_target(LIB_SUB_DIR, function()
@@ -219,7 +219,7 @@ describe("runner", function()
       local _, teardown = setup_run_stubs()
 
       local results =
-         runner.run({ FIXTURE_DIR .. "/nonexistent_bench.lua" }, TARGETS_PAIR, RUNTIME_OPTS)
+         runner.run({ path.join(FIXTURE_DIR, "nonexistent_bench.lua") }, TARGETS_PAIR, RUNTIME_OPTS)
 
       teardown()
 
@@ -259,7 +259,7 @@ describe("runner", function()
 
    it("run when bench file has named specs returns results for each spec", function()
       local _, teardown = setup_run_stubs()
-      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+      local multi_bench = path.join(FIXTURE_DIR, "benchmarks", "multi_bench.lua")
 
       local results = runner.run({ multi_bench }, TARGETS_PAIR, RUNTIME_OPTS)
 
@@ -270,7 +270,7 @@ describe("runner", function()
 
    it("run collects spec names from all targets not just the first", function()
       local _, teardown = setup_run_stubs()
-      local asym_bench = FIXTURE_DIR .. "/benchmarks/asymmetric_bench.lua"
+      local asym_bench = path.join(FIXTURE_DIR, "benchmarks", "asymmetric_bench.lua")
 
       local results = runner.run({ asym_bench }, TARGETS_PAIR, RUNTIME_OPTS)
 
@@ -290,7 +290,7 @@ describe("runner", function()
       end)
 
       runner.run(
-         { SORT_BENCH, FIXTURE_DIR .. "/benchmarks/sort_bench.lua" },
+         { SORT_BENCH, path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua") },
          TARGETS_PAIR,
          RUNTIME_OPTS
       )
@@ -350,7 +350,7 @@ describe("runner", function()
 
    it("run with multiple bench files returns results for all specs", function()
       local _, teardown = setup_run_stubs()
-      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+      local multi_bench = path.join(FIXTURE_DIR, "benchmarks", "multi_bench.lua")
 
       local results = runner.run({ SORT_BENCH, multi_bench }, TARGETS_PAIR, RUNTIME_OPTS)
 
@@ -361,7 +361,7 @@ describe("runner", function()
 
    it("run with opts.filters matching a pattern only runs matching benchmarks", function()
       local _, teardown = setup_run_stubs()
-      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+      local multi_bench = path.join(FIXTURE_DIR, "benchmarks", "multi_bench.lua")
 
       local results = runner.run(
          { SORT_BENCH, multi_bench },
@@ -376,7 +376,7 @@ describe("runner", function()
 
    it("run with multiple filters uses OR logic", function()
       local _, teardown = setup_run_stubs()
-      local multi_bench = FIXTURE_DIR .. "/benchmarks/multi_bench.lua"
+      local multi_bench = path.join(FIXTURE_DIR, "benchmarks", "multi_bench.lua")
 
       local results = runner.run(
          { SORT_BENCH, multi_bench },

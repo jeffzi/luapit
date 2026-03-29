@@ -5,8 +5,8 @@ local path = require("pl.path")
 local defold_html5
 
 local CWD = path.currentdir()
-local FIXTURE_DIR = CWD .. "/tests/engines/fixtures"
-local TRIVIAL_BENCH = FIXTURE_DIR .. "/trivial_bench.lua"
+local FIXTURE_DIR = path.join(CWD, "tests", "engines", "fixtures")
+local TRIVIAL_BENCH = path.join(FIXTURE_DIR, "trivial_bench.lua")
 
 --- Check that a command exists in PATH; call pending() and return false if absent.
 --- @param cmd string Command name to look up.

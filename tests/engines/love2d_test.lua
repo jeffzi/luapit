@@ -5,10 +5,10 @@ describe("engines.love2d", function()
    local love2d
 
    local CWD = path.currentdir()
-   local FIXTURE_DIR = CWD .. "/tests/fixtures"
-   local LIBV1_DIR = FIXTURE_DIR .. "/targets/libv1"
-   local LIBV2_DIR = FIXTURE_DIR .. "/targets/libv2"
-   local SORT_BENCH = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
+   local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
+   local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
+   local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
+   local SORT_BENCH = path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua")
    local DEFAULT_TARGETS = { { path = LIBV1_DIR, name = "libv1" } }
 
    --- Temporarily stub engines.find_module_path, run a callback, then restore.
