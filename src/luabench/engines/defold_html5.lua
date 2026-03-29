@@ -1,4 +1,6 @@
 local dir = require("pl.dir")
+local exec = require("luabench.exec")
+local json = require("dkjson")
 local utils = require("pl.utils")
 
 local engines = require("luabench.engines")
@@ -58,12 +60,12 @@ end
 local function scaffold_html5_project(bench_file, targets, spec_name, opts)
    local defold = require("luabench.engines.defold")
    local tmpdir, result_path = defold._scaffold_project(bench_file, targets, spec_name, opts)
-   if not tmpdir then
+   if tmpdir == nil then
       return nil, result_path
    end
 
    -- Clean up the desktop result_path (not needed for HTML5)
-   if result_path then
+   if result_path ~= nil then
       pcall(os.remove, result_path)
    end
 
@@ -83,16 +85,8 @@ end
 --- @return true|nil ok True if playwright found.
 --- @return string|nil err Error message if not found.
 local function check_playwright(node_path)
-   local cmd = quote_arg(node_path) .. " -e \"require('playwright')\" 2>&1"
-   local h = io.popen(cmd)
-   if not h then
-      return nil, "cannot check playwright availability"
-   end
-   local output = h:read("*a")
-   local ok = h:close()
-   -- Lua 5.1 pclose() always returns true, so also check for any output
-   -- (a successful require produces no output; errors produce stderr text)
-   if not ok or (output and output ~= "" and output:match("%S")) then
+   local ok, _, stderr = exec.run(quote_arg(node_path) .. " -e \"require('playwright')\"")
+   if not ok or (stderr and stderr:match("%S")) then
       return nil,
          "playwright not found"
             .. " (install with: npm install playwright"
@@ -106,7 +100,7 @@ end
 --- @return string|nil err Error message if not found.
 local function locate_harness()
    local found = engines.find_command("luabench-html5-harness")
-   if found then
+   if found ~= nil then
       return found
    end
    return nil, "luabench-html5-harness not found in PATH"
@@ -123,34 +117,29 @@ end
 --- @return table[]|nil results Parsed luamark results, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.run(runtime_path, bench_file, targets, spec_name, opts)
-   -- Check java availability
    local defold = require("luabench.engines.defold")
    local java_ok, java_err = defold._check_java()
-   if not java_ok then
+   if java_ok == nil then
       return nil, java_err
    end
 
-   -- Locate bob.jar
    local bob, bob_err = defold._locate_bob()
-   if not bob then
+   if bob == nil then
       return nil, bob_err
    end
 
-   -- Check playwright availability
    local pw_ok, pw_err = check_playwright(runtime_path)
-   if not pw_ok then
+   if pw_ok == nil then
       return nil, pw_err
    end
 
-   -- Locate harness script
    local harness_path, harness_err = locate_harness()
-   if not harness_path then
+   if harness_path == nil then
       return nil, harness_err
    end
 
-   -- Scaffold HTML5 project
    local tmpdir, scaffold_err = scaffold_html5_project(bench_file, targets, spec_name, opts)
-   if not tmpdir then
+   if tmpdir == nil then
       return nil, scaffold_err
    end
 
@@ -159,25 +148,8 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       pcall(dir.rmtree, tmpdir)
    end
 
-   --- Run a shell command; on failure clean up and return nil + error message.
-   --- @param cmd string Shell command to execute.
-   --- @param label string Human-readable label for error messages.
-   --- @return string|nil stdout Captured stdout on success, nil on failure.
-   --- @return string|nil err Error message on failure.
-   local function exec_step(cmd, label)
-      local ok, _, stdout, stderr = utils.executeex(cmd)
-      if not ok then
-         local output = ((stderr or stdout or ""):match("^(.-)%s*$")) or ""
-         cleanup()
-         if output ~= "" then
-            return nil, label .. " failed: " .. output
-         end
-         return nil, label .. " failed"
-      end
-      return stdout
-   end
+   local exec_step = engines.make_exec_step(exec, cleanup)
 
-   -- Build with bob.jar for js-web
    local _, build_err = exec_step(
       string.format(
          "java -jar %s --root %s --platform js-web resolve build --archive",
@@ -186,11 +158,10 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       ),
       "Defold HTML5 build"
    )
-   if build_err then
+   if build_err ~= nil then
       return nil, build_err
    end
 
-   -- Bundle for js-web
    local bundle_dir = tmpdir .. "/bundle"
    local _, bundle_err = exec_step(
       string.format(
@@ -201,14 +172,13 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       ),
       "Defold HTML5 bundle"
    )
-   if bundle_err then
+   if bundle_err ~= nil then
       return nil, bundle_err
    end
 
    -- The bundle output structure is: bundle_dir/<project_title>/
    local game_dir = bundle_dir .. "/luabench"
 
-   -- Execute harness: node <harness_path> <game_dir>
    local run_stdout, run_err = exec_step(
       string.format(
          "%s %s %s",
@@ -218,16 +188,14 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       ),
       "HTML5 harness"
    )
-   if run_err then
+   if run_err ~= nil then
       return nil, run_err
    end
 
    cleanup()
 
-   -- Parse JSON results from stdout
-   local json = require("dkjson")
    local results, _, parse_err = json.decode(run_stdout)
-   if not results then
+   if results == nil then
       return nil, "failed to parse HTML5 results: " .. tostring(parse_err)
    end
 

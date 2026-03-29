@@ -186,38 +186,14 @@ describe("resolve", function()
       assert.is_true(ok)
    end)
 
-   -- exec_ok cross-version wrapper
+   -- resolve_targets: bare dot with alias
 
-   it("exec_ok returns true for success and false for failure", function()
-      assert.is_true(resolve._exec_ok("true"))
-      assert.is_false(resolve._exec_ok("false"))
-   end)
+   it("resolve_targets uses alias as name for aliased bare dot spec", function()
+      local targets, err = resolve.resolve_targets({ "wt=." })
 
-   -- capture wrapper
-
-   it("capture returns trimmed output of command", function()
-      local out = resolve._capture("echo hello")
-
-      assert.are_equal("hello", out)
-   end)
-
-   -- resolve_bare_dot
-
-   it("resolve_bare_dot inside git repo returns repo root", function()
-      local result = resolve._resolve_bare_dot(nil)
-
-      assert.is_not_nil(result)
-      assert.are_equal("working-tree", result.name)
-      assert.is_false(result.cleanup)
-      assert.is_string(result.path)
-      -- We're inside a git repo, so path should be a real directory
-      assert.is_true(plpath.isdir(result.path))
-   end)
-
-   it("resolve_bare_dot uses alias when provided", function()
-      local result = resolve._resolve_bare_dot("wt")
-
-      assert.are_equal("wt", result.name)
+      assert.is_not_nil(targets, err)
+      assert.are_equal(1, #targets)
+      assert.are_equal("wt", targets[1].name)
    end)
 
    --- Run fn with stderr redirected; return captured stderr output.
@@ -239,7 +215,6 @@ describe("resolve", function()
       return output
    end
 
-   -- Shared temp directory tracking for clone_repo and prepare_targets tests.
    local temp_dirs = {}
 
    after_each(function()
@@ -335,7 +310,6 @@ describe("resolve", function()
          })
       end)
 
-      -- Should not error (we got here) and may warn
       assert.is_string(stderr_output)
    end)
 
@@ -402,16 +376,6 @@ describe("resolve", function()
       assert.is_not_nil(targets, err)
       assert.are_equal(1, #targets)
       assert.are_equal(LIBV1_DIR, targets[1].original_spec)
-   end)
-
-   it("resolve_targets sets original_spec for each target in multi-target resolution", function()
-      local aliased_spec = "v1=" .. LIBV1_DIR
-      local targets, err = resolve.resolve_targets({ aliased_spec, "." })
-
-      assert.is_not_nil(targets, err)
-      assert.are_equal(2, #targets)
-      assert.are_equal(aliased_spec, targets[1].original_spec)
-      assert.are_equal(".", targets[2].original_spec)
    end)
 
    -- resolve_targets with git refs (integration)

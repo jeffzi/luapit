@@ -1,10 +1,11 @@
 ---@diagnostic disable: need-check-nil
 
+local path = require("pl.path")
 local utils = require("pl.utils")
 
 local M = {}
 
-local IS_WINDOWS = package.config:sub(1, 1) == "\\"
+local IS_WINDOWS = path.is_windows
 
 local quote_arg = utils.quote_arg
 local readfile = utils.readfile
@@ -37,6 +38,7 @@ end
 local SIGINT = 2
 local SIGINT_EXIT = 128 + SIGINT -- 130: conventional exit code for SIGINT death
 
+--- Raise an "interrupted!" error to propagate SIGINT up the call stack.
 local function raise_interrupted()
    error("interrupted!")
 end

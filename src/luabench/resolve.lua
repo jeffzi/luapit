@@ -1,28 +1,28 @@
+local exec = require("luabench.exec")
 local path = require("pl.path")
 local pldir = require("pl.dir")
+local stringx = require("pl.stringx")
 local utils = require("pl.utils")
 
 local M = {}
 
 local quote_arg = utils.quote_arg
 
---- Execute a shell command and return whether it succeeded.
 --- @param cmd string Shell command to execute.
 --- @return boolean ok True if command exited with code 0.
 local function exec_ok(cmd)
-   local ok = utils.executeex(cmd)
-   return ok == true
+   return (exec.run(cmd))
 end
 
 --- Capture stdout of a shell command, trimmed.
 --- @param cmd string Shell command to execute.
 --- @return string|nil output Trimmed output, or nil on failure.
 local function capture(cmd)
-   local ok, _, stdout = utils.executeex(cmd)
-   if not ok or not stdout then
+   local ok, stdout = exec.run(cmd)
+   if not ok or stdout == nil then
       return nil
    end
-   return stdout:match("^(.-)%s*$")
+   return stringx.strip(stdout)
 end
 
 --- @class ParsedTarget
@@ -38,7 +38,7 @@ end
 --- @return string|nil err Error message if parsing failed.
 function M.parse_target(spec)
    local alias, rest = spec:match("^([^=]+)=(.+)$")
-   if not alias then
+   if alias == nil then
       rest = spec
    end
 
@@ -50,15 +50,15 @@ function M.parse_target(spec)
 
    -- SSH: git@host:path#ref
    repo, ref = rest:match("^(git@[^#]+)#(.+)$")
-   if not repo then
+   if repo == nil then
       -- HTTPS: https://...#ref
       repo, ref = rest:match("^(https?://[^#]+)#(.+)$")
    end
-   if not repo then
+   if repo == nil then
       -- Local: .<optional-path>#ref
       repo, ref = rest:match("^(%.[^#]*)#(.+)$")
    end
-   if repo then
+   if repo ~= nil then
       return { alias = alias, repo = repo, ref = ref }
    end
 
@@ -67,7 +67,7 @@ function M.parse_target(spec)
    end
 
    local hash_ref = rest:match("^#(.+)$")
-   if hash_ref then
+   if hash_ref ~= nil then
       return nil,
          string.format(
             "invalid target: %q\n  Detected ref %q without a repo -- did you mean '.#%s'?",
@@ -89,16 +89,16 @@ end
 --- @param parsed ParsedTarget Parsed target data.
 --- @return string name Display name.
 function M.display_name(parsed)
-   if parsed.alias then
+   if parsed.alias ~= nil then
       return parsed.alias
    end
-   if parsed.bare_dot then
+   if parsed.bare_dot ~= nil then
       return "working-tree"
    end
-   if parsed.local_dir then
+   if parsed.local_dir ~= nil then
       return path.basename(parsed.local_dir)
    end
-   if parsed.ref then
+   if parsed.ref ~= nil then
       return parsed.ref
    end
    return "unknown"
@@ -116,7 +116,8 @@ function M.validate_targets(parsed_list, raw_specs)
       if seen[name] then
          return nil,
             string.format(
-               "duplicate target name %q (from %q and %q) -- add aliases to disambiguate (e.g. a=%s b=%s)",
+               "duplicate target name %q (from %q and %q)"
+                  .. " -- add aliases to disambiguate (e.g. a=%s b=%s)",
                name,
                seen[name],
                raw_specs[i],
@@ -225,17 +226,15 @@ end
 --- @return ResolvedTarget[]|nil targets Resolved targets, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.resolve_targets(raw_specs)
-   -- Parse all specs first (fail fast on any parse error)
    local parsed_list = {}
    for i = 1, #raw_specs do
       local parsed, err = M.parse_target(raw_specs[i])
-      if not parsed then
+      if parsed == nil then
          return nil, err
       end
       parsed_list[#parsed_list + 1] = parsed
    end
 
-   -- Check for duplicate display names
    local ok, err = M.validate_targets(parsed_list, raw_specs)
    if not ok then
       return nil, err
@@ -248,20 +247,20 @@ function M.resolve_targets(raw_specs)
       local p = parsed_list[i]
       local name = M.display_name(p)
 
-      if p.bare_dot then
+      if p.bare_dot ~= nil then
          local target = resolve_bare_dot(p.alias)
          target.original_spec = raw_specs[i]
          resolved[#resolved + 1] = target
-      elseif p.local_dir then
+      elseif p.local_dir ~= nil then
          resolved[#resolved + 1] = {
             path = p.local_dir,
             name = name,
             cleanup = false,
             original_spec = raw_specs[i],
          }
-      elseif p.repo and p.ref then
+      elseif p.repo ~= nil and p.ref ~= nil then
          local temp_dir, temp_err = make_temp_dir(p.ref)
-         if not temp_dir then
+         if temp_dir == nil then
             M.cleanup(cleanup_on_error)
             return nil, "failed to create temp directory: " .. (temp_err or "unknown error")
          end
@@ -270,7 +269,7 @@ function M.resolve_targets(raw_specs)
          local repo_path = is_remote and p.repo or path.abspath(p.repo)
 
          local clone_ok, clone_err = clone_repo(repo_path, temp_dir, p.ref, is_remote)
-         if not clone_ok then
+         if clone_ok == nil then
             cleanup_on_error[#cleanup_on_error + 1] =
                { path = temp_dir, name = name, cleanup = true }
             M.cleanup(cleanup_on_error)
@@ -308,16 +307,6 @@ function M.cleanup(targets)
    end
 end
 
---- Check whether os.execute succeeded (Lua 5.1 returns number, 5.2+ returns boolean).
---- @param result boolean|number|nil Return value from os.execute.
---- @return boolean ok True if command exited with code 0.
-local function os_exec_ok(result)
-   if type(result) == "number" then
-      return result == 0
-   end
-   return result == true
-end
-
 --- Run a preparation command for each cloned target.
 --- Targets with cleanup=false pass through unchanged. For cleanup=true targets,
 --- run cmd in the target directory; on failure, warn on stderr and remove.
@@ -331,8 +320,8 @@ function M.prepare_targets(targets, cmd)
       if not t.cleanup then
          result[#result + 1] = t
       else
-         local full_cmd = "cd " .. quote_arg(t.path) .. " && " .. cmd
-         local ok = os_exec_ok(os.execute(full_cmd))
+         local full_cmd = table.concat({ "cd", quote_arg(t.path), "&&", cmd }, " ")
+         local ok = exec.stream(full_cmd)
          if ok then
             result[#result + 1] = t
          else

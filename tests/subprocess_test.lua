@@ -1,10 +1,12 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter, unused-local, unused-vararg
 local path = require("pl.path")
 
-local IS_WINDOWS = package.config:sub(1, 1) == "\\"
+local IS_WINDOWS = path.is_windows
 
 describe("subprocess", function()
    local subprocess
+   local exec
+   local original_exec_run
 
    local CWD = path.currentdir()
    local FIXTURE_DIR = CWD .. "/tests/fixtures"
@@ -13,7 +15,13 @@ describe("subprocess", function()
    local SORT_BENCH = FIXTURE_DIR .. "/benchmarks/sort_bench.lua"
 
    before_each(function()
+      exec = require("luabench.exec")
+      original_exec_run = exec.run
       subprocess = require("luabench.subprocess")
+   end)
+
+   after_each(function()
+      exec.run = original_exec_run
    end)
 
    -- find_command tests
@@ -36,14 +44,10 @@ describe("subprocess", function()
 
    it("find_command dispatches to platform-specific lookup", function()
       if IS_WINDOWS then
-         -- On Windows: find_command uses where.exe and extracts first line
-         -- Just verify that a known command returns a valid path.
          local result = subprocess.find_command("cmd")
          assert.is_string(result)
          assert.is_nil(result:find("\r"), "Windows: path must not contain CR from where.exe")
       else
-         -- On POSIX: find_command uses command -v
-         -- Verify it works for a command we know is present
          local result = subprocess.find_command("sh")
          assert.is_string(result)
          assert.matches("sh", result)
@@ -51,17 +55,12 @@ describe("subprocess", function()
    end)
 
    it("find_command extracts first line only from multi-line output", function()
-      -- Simulate where.exe multi-line output by patching exec.run
-      local exec = require("luabench.exec")
-      local original_run = exec.run
+      -- Simulate where.exe multi-line output to verify first-line extraction
       exec.run = function(_cmd)
-         -- Return simulated where.exe multi-line output with CRLF
          return true, "C:\\Windows\\System32\\lua.exe\r\nC:\\Program Files\\Lua\\lua.exe\r\n", ""
       end
 
       local result = subprocess.find_command("lua")
-
-      exec.run = original_run
 
       assert.is_string(result)
       assert.are_equal("C:\\Windows\\System32\\lua.exe", result)

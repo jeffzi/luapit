@@ -1,9 +1,12 @@
 local exec = require("luabench.exec")
+local path = require("pl.path")
+local stringx = require("pl.stringx")
+local tablex = require("pl.tablex")
 local utils = require("pl.utils")
 
 local M = {}
 
-local IS_WINDOWS = package.config:sub(1, 1) == "\\"
+local IS_WINDOWS = path.is_windows
 local quote_arg = utils.quote_arg
 
 --- Build a Lua code expression that sets package.path for a target.
@@ -134,15 +137,12 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
 
    -- Build opts table
    parts[#parts + 1] = "local opts = {}"
-   if opts.rounds then
+   if opts.rounds ~= nil then
       parts[#parts + 1] = string.format("opts.rounds = %d", opts.rounds)
    end
-   if opts.params then
+   if opts.params ~= nil then
       parts[#parts + 1] = "opts.params = {"
-      local param_names = {}
-      for name in pairs(opts.params) do
-         param_names[#param_names + 1] = name
-      end
+      local param_names = tablex.keys(opts.params)
       table.sort(param_names)
       for i = 1, #param_names do
          local name = param_names[i]
@@ -212,7 +212,7 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
 
    if not ok then
       cleanup()
-      local output = (stderr or stdout or ""):match("^(.-)%s*$") or ""
+      local output = stringx.strip(stderr or stdout or "")
       if output ~= "" then
          return nil, "subprocess failed: " .. output
       end

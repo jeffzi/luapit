@@ -1,5 +1,7 @@
 local dir = require("pl.dir")
 local engines = require("luabench.engines")
+local exec = require("luabench.exec")
+local stringx = require("pl.stringx")
 local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
@@ -70,19 +72,16 @@ end
 --- @return string|nil tmpdir Temporary project directory, or nil on error.
 --- @return string|nil result_path_or_err Result file path on success, error message on failure.
 local function scaffold_project(bench_file, targets, spec_name, opts)
-   -- Locate luamark.lua
    local luamark_path, luamark_err = engines.find_module_path("luamark")
-   if not luamark_path then
+   if luamark_path == nil then
       return nil, luamark_err
    end
 
-   -- Locate dkjson.lua
    local dkjson_path, dkjson_err = engines.find_module_path("dkjson")
-   if not dkjson_path then
+   if dkjson_path == nil then
       return nil, dkjson_err
    end
 
-   -- Create temp directory
    local base = os.tmpname()
    os.remove(base)
    local tmpdir = base .. "_love"
@@ -98,14 +97,12 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, cp_err
    end
 
-   -- Copy dkjson.lua
    cp_ok, cp_err = engines.copy_file(dkjson_path, tmpdir .. "/dkjson.lua")
    if not cp_ok then
       dir.rmtree(tmpdir)
       return nil, cp_err
    end
 
-   -- Write conf.lua
    local write_err
    ok, write_err = utils.writefile(tmpdir .. "/conf.lua", CONF_TEMPLATE)
    if not ok then
@@ -113,12 +110,10 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, "failed to write conf.lua: " .. tostring(write_err)
    end
 
-   -- Generate result path (absolute, outside tmpdir)
    local result_base = os.tmpname()
    local result_path = result_base .. ".json"
    os.remove(result_base)
 
-   -- Write main.lua
    local wrapper = generate_love_wrapper(bench_file, targets, spec_name, opts, result_path)
    ok, write_err = utils.writefile(tmpdir .. "/main.lua", wrapper)
    if not ok then
@@ -140,8 +135,8 @@ end
 --- @return string|nil err Error message on failure.
 function M.run(runtime_path, bench_file, targets, spec_name, opts)
    local tmpdir, result_path = scaffold_project(bench_file, targets, spec_name, opts)
-   if not tmpdir then
-      return nil, result_path -- result_path is the error message here
+   if tmpdir == nil then
+      return nil, result_path -- result_path holds the error message on failure
    end
    ---@cast result_path string
 
@@ -151,13 +146,12 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       pcall(os.remove, result_path)
    end
 
-   -- Execute love <tmpdir>
    local cmd = quote_arg(runtime_path) .. " " .. quote_arg(tmpdir)
-   local ok, _, stdout, stderr = utils.executeex(cmd)
+   local ok, stdout, stderr = exec.run(cmd)
 
    if not ok then
       cleanup()
-      local output = (stderr or stdout or ""):match("^(.-)%s*$") or ""
+      local output = stringx.strip(stderr or stdout or "")
       if output ~= "" then
          return nil, "engine failed: " .. output
       end

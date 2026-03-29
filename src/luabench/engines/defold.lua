@@ -1,4 +1,5 @@
 local dir = require("pl.dir")
+local exec = require("luabench.exec")
 local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
@@ -102,7 +103,7 @@ local function locate_bob()
       return bob
    end
    local found = engines.find_command("bob.jar")
-   if found then
+   if found ~= nil then
       return found
    end
    return nil, "bob.jar not found: set BOB environment variable or add bob.jar to PATH"
@@ -130,7 +131,6 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    os.remove(base)
    local tmpdir = base .. "_defold"
 
-   -- Create directories
    local ok, err = dir.makepath(tmpdir .. "/input")
    if not ok then
       return nil, "failed to create input dir: " .. tostring(err)
@@ -141,7 +141,6 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, "failed to create main dir: " .. tostring(err)
    end
 
-   -- Write static project files
    ok, err = utils.writefile(tmpdir .. "/game.project", GAME_PROJECT)
    if not ok then
       dir.rmtree(tmpdir)
@@ -163,15 +162,14 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, err
    end
 
-   -- Copy luamark.lua and dkjson.lua into main/
    local luamark_path, luamark_err = engines.find_module_path("luamark")
-   if not luamark_path then
+   if luamark_path == nil then
       dir.rmtree(tmpdir)
       return nil, "cannot locate luamark: " .. tostring(luamark_err)
    end
 
    local dkjson_path, dkjson_err = engines.find_module_path("dkjson")
-   if not dkjson_path then
+   if dkjson_path == nil then
       dir.rmtree(tmpdir)
       return nil, "cannot locate dkjson: " .. tostring(dkjson_err)
    end
@@ -188,12 +186,10 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, err
    end
 
-   -- Generate result path
    local result_base = os.tmpname()
    os.remove(result_base)
    local result_path = result_base .. ".json"
 
-   -- Generate and write wrapper script
    local wrapper = generate_defold_wrapper(bench_file, targets, spec_name, opts, result_path)
    ok, err = utils.writefile(tmpdir .. "/main/test.script", wrapper)
    if not ok then
@@ -215,21 +211,18 @@ end
 --- @return table[]|nil results Parsed luamark results, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.run(runtime_path, bench_file, targets, spec_name, opts)
-   -- Check java availability
    local java_ok, java_err = check_java()
-   if not java_ok then
+   if java_ok == nil then
       return nil, java_err
    end
 
-   -- Locate bob.jar
    local bob, bob_err = locate_bob()
-   if not bob then
+   if bob == nil then
       return nil, bob_err
    end
 
-   -- Scaffold project
    local tmpdir, result_path = scaffold_project(bench_file, targets, spec_name, opts)
-   if not tmpdir then
+   if tmpdir == nil then
       return nil, result_path -- result_path holds error message on failure
    end
    --- @cast result_path string
@@ -240,25 +233,8 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       pcall(os.remove, result_path)
    end
 
-   --- Run a shell command; on failure clean up and return nil + error message.
-   --- @param cmd string Shell command to execute.
-   --- @param label string Human-readable label for error messages.
-   --- @return string|nil stdout Captured stdout on success, nil on failure.
-   --- @return string|nil err Error message on failure.
-   local function exec_step(cmd, label)
-      local ok, _, stdout, stderr = utils.executeex(cmd)
-      if not ok then
-         local output = ((stderr or stdout or ""):match("^(.-)%s*$")) or ""
-         cleanup()
-         if output ~= "" then
-            return nil, label .. " failed: " .. output
-         end
-         return nil, label .. " failed"
-      end
-      return stdout
-   end
+   local exec_step = engines.make_exec_step(exec, cleanup)
 
-   -- Build with bob.jar
    local _, build_err = exec_step(
       string.format(
          "java -jar %s --root %s resolve build --archive",
@@ -267,16 +243,15 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       ),
       "Defold build"
    )
-   if build_err then
+   if build_err ~= nil then
       return nil, build_err
    end
 
-   -- Run dmengine_headless from project directory
    local _, run_err = exec_step(
       string.format("cd %s && %s", quote_arg(tmpdir), quote_arg(runtime_path)),
       "dmengine_headless"
    )
-   if run_err then
+   if run_err ~= nil then
       return nil, run_err
    end
 

@@ -30,7 +30,7 @@ local function parse_params(raw_params)
             string.format("invalid parameter format: %q (expected NAME:VALUE)", raw_params[i])
       end
       local num = tonumber(value)
-      if num then
+      if num ~= nil then
          value = num
       elseif value == "true" then
          value = true
@@ -86,85 +86,92 @@ function M.main(argv)
       end
       ---@cast targets -nil
 
-      --- Clean up temp directories and exit with an error.
-      --- @param msg string|nil Error message.
-      local function cleanup_and_die(msg)
-         resolve.cleanup(targets)
-         die(msg)
-      end
-
-      -- Run preparation command if --prepare specified
-      if args.prepare then
-         local prepared = resolve.prepare_targets(targets, args.prepare)
-         if #prepared == 0 then
-            cleanup_and_die("all targets failed preparation")
+      -- Run the entire ref pipeline under pcall so any "interrupted!" error
+      -- (from resolve, prepare, runner, or subprocesses) is caught, cleanup
+      -- always runs, and we exit 130 cleanly.
+      local ref_ok, ref_err = pcall(function()
+         --- Clean up temp directories and exit with an error.
+         --- @param msg string|nil Error message.
+         local function cleanup_and_die(msg)
+            resolve.cleanup(targets)
+            die(msg)
          end
-         targets = prepared
-      end
 
-      -- Discover benchmarks (default to cwd)
-      local bench_paths = args.bench
-      if #bench_paths == 0 then
-         bench_paths = { "." }
-      end
-      local bench_files = discover.discover(bench_paths)
-      if #bench_files == 0 then
-         cleanup_and_die("no benchmark files found")
-      end
+         if args.prepare ~= nil then
+            local prepared = resolve.prepare_targets(targets, args.prepare)
+            if #prepared == 0 then
+               cleanup_and_die("all targets failed preparation")
+            end
+            targets = prepared
+         end
 
-      -- Build opts from CLI flags
-      local opts = {}
-      if args.test then
-         opts.rounds = 1
-      end
-      if args.filter and #args.filter > 0 then
-         opts.filters = args.filter
-      end
-      if args.param and #args.param > 0 then
-         local params, param_err = parse_params(args.param)
-         if not params then
-            cleanup_and_die(param_err)
+         local bench_paths = args.bench
+         if #bench_paths == 0 then
+            bench_paths = { "." }
          end
-         opts.params = params
-      end
-      if args.lua_path and #args.lua_path > 0 then
-         local paths = {}
-         for i = 1, #args.lua_path do
-            paths[i] = args.lua_path[i]:gsub("/+$", "")
+         local bench_files = discover.discover(bench_paths)
+         if #bench_files == 0 then
+            cleanup_and_die("no benchmark files found")
          end
-         opts.lua_path = paths
-      end
 
-      -- Resolve runtime if -R specified (fail fast on error)
-      if args.runtime then
-         local engine_name = engines.detect(args.runtime)
-         local resolve_name = engine_name and engines.runtime_cmd(engine_name) or args.runtime
-         local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
-         if not runtime_path then
-            cleanup_and_die(runtime_err)
+         local opts = {}
+         if args.test then
+            opts.rounds = 1
          end
-         opts.runtime = runtime_path
-         if engine_name then
-            opts.engine_name = engine_name
+         if args.filter and #args.filter > 0 then
+            opts.filters = args.filter
          end
-      end
+         if args.param and #args.param > 0 then
+            local params, param_err = parse_params(args.param)
+            if params == nil then
+               cleanup_and_die(param_err)
+            end
+            opts.params = params
+         end
+         if args.lua_path and #args.lua_path > 0 then
+            local paths = {}
+            for i = 1, #args.lua_path do
+               paths[i] = args.lua_path[i]:gsub("/+$", "")
+            end
+            opts.lua_path = paths
+         end
 
-      -- Run benchmarks then cleanup (cleanup always runs)
-      local run_ok, run_result = pcall(runner.run, bench_files, targets, opts)
+         if args.runtime ~= nil then
+            local engine_name = engines.detect(args.runtime)
+            local resolve_name
+            if engine_name ~= nil then
+               resolve_name = engines.runtime_cmd(engine_name)
+            else
+               resolve_name = args.runtime
+            end
+            local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
+            if runtime_path == nil then
+               cleanup_and_die(runtime_err)
+            end
+            opts.runtime = runtime_path
+            if engine_name ~= nil then
+               opts.engine_name = engine_name
+            end
+         end
+
+         local run_result = runner.run(bench_files, targets, opts)
+
+         if args.output ~= nil then
+            local ok, write_err = export.write_json(args.output, run_result, targets, M._VERSION)
+            if not ok then
+               cleanup_and_die("failed to write JSON: " .. tostring(write_err))
+            end
+         end
+      end)
+
       resolve.cleanup(targets)
-      if not run_ok then
-         local msg = tostring(run_result)
+
+      if not ref_ok then
+         local msg = tostring(ref_err)
          if msg:find("interrupted") then
             os.exit(130)
          end
          die("benchmark error: " .. msg)
-      end
-
-      if args.output then
-         local ok, write_err = export.write_json(args.output, run_result, targets, M._VERSION)
-         if not ok then
-            die("failed to write JSON: " .. tostring(write_err))
-         end
       end
    end
 end

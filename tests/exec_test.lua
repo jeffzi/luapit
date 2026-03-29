@@ -1,6 +1,6 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter
 
-local IS_WINDOWS = package.config:sub(1, 1) == "\\"
+local IS_WINDOWS = require("pl.path").is_windows
 
 describe("exec", function()
    local exec

@@ -1,4 +1,5 @@
 local path = require("pl.path")
+local stringx = require("pl.stringx")
 local subprocess = require("luabench.subprocess")
 local utils = require("pl.utils")
 
@@ -49,7 +50,7 @@ end
 --- @return string|nil err Error message on failure.
 function M.copy_file(src, dst)
    local content, err = utils.readfile(src, true)
-   if not content then
+   if content == nil then
       return false, "cannot read source: " .. src .. ": " .. tostring(err)
    end
    local ok, write_err = utils.writefile(dst, content, true)
@@ -105,17 +106,18 @@ function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
 
    -- Build opts table
    parts[#parts + 1] = "      local opts = {}"
-   if opts.rounds then
+   if opts.rounds ~= nil then
       parts[#parts + 1] = string.format("      opts.rounds = %d", opts.rounds)
    end
-   if opts.params then
+   if opts.params ~= nil then
       parts[#parts + 1] = "      opts.params = {"
       local param_names = {}
       for name in pairs(opts.params) do
          param_names[#param_names + 1] = name
       end
       table.sort(param_names)
-      for _, name in ipairs(param_names) do
+      for i = 1, #param_names do
+         local name = param_names[i]
          local values = opts.params[name]
          local vals = {}
          for j = 1, #values do
@@ -157,6 +159,29 @@ function M.append_wrapper_body(parts, bench_file, targets, spec_name, opts, resu
    parts[#parts + 1] = "      f:close()"
 end
 
+--- Return a step-runner closure that executes a command and calls cleanup on failure.
+--- @param exec_mod table Module with a `run(cmd)` function (luabench.exec).
+--- @param cleanup fun() Cleanup function invoked before returning a failure error.
+--- @return fun(cmd: string, label: string): string|nil, string|nil step_fn
+function M.make_exec_step(exec_mod, cleanup)
+   --- @param cmd string Shell command to execute.
+   --- @param label string Human-readable label for error messages.
+   --- @return string|nil stdout Captured stdout on success, nil on failure.
+   --- @return string|nil err Error message on failure.
+   return function(cmd, label)
+      local ok, stdout, stderr = exec_mod.run(cmd)
+      if not ok then
+         local output = stringx.strip(stderr or stdout or "")
+         cleanup()
+         if output ~= "" then
+            return nil, label .. " failed: " .. output
+         end
+         return nil, label .. " failed"
+      end
+      return stdout
+   end
+end
+
 --- Locate an installed Lua module's source file on disk.
 --- Try package.searchpath first (Lua 5.2+, LuaJIT), fall back to manual
 --- iteration of package.path templates for Lua 5.1 compatibility.
@@ -165,15 +190,14 @@ end
 --- @return string|nil err Error message if module source not found.
 function M.find_module_path(modname)
    ---@diagnostic disable-next-line: deprecated
-   if package.searchpath then --luacheck: ignore 143
+   if package.searchpath ~= nil then --luacheck: ignore 143
       ---@diagnostic disable-next-line: deprecated
       local found = package.searchpath(modname, package.path) --luacheck: ignore 143
-      if found then
+      if found ~= nil then
          return found
       end
    end
-   local sep = package.config:sub(1, 1)
-   local mod_file = modname:gsub("%.", sep)
+   local mod_file = stringx.replace(modname, ".", path.sep)
    for template in package.path:gmatch("[^;]+") do
       local fpath = template:gsub("%?", mod_file)
       if path.isfile(fpath) then
