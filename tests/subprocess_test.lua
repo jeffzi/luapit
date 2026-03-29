@@ -1,6 +1,8 @@
 ---@diagnostic disable: need-check-nil, duplicate-set-field, missing-parameter, redundant-parameter
 local path = require("pl.path")
 
+local IS_WINDOWS = package.config:sub(1, 1) == "\\"
+
 describe("subprocess", function()
    local subprocess
 
@@ -12,6 +14,59 @@ describe("subprocess", function()
 
    before_each(function()
       subprocess = require("luabench.subprocess")
+   end)
+
+   -- find_command tests
+
+   it("find_command with known command returns path without CR/LF", function()
+      local result = subprocess.find_command("lua")
+
+      assert.is_string(result)
+      assert.matches("lua", result)
+      -- Path must not contain carriage return or newline (where.exe multi-line guard)
+      assert.is_nil(result:find("\r"), "path must not contain CR")
+      assert.is_nil(result:find("\n"), "path must not contain LF")
+   end)
+
+   it("find_command with nonexistent command returns nil", function()
+      local result = subprocess.find_command("nonexistent_xyz_cmd_42")
+
+      assert.is_nil(result)
+   end)
+
+   it("find_command dispatches to platform-specific lookup", function()
+      if IS_WINDOWS then
+         -- On Windows: find_command uses where.exe and extracts first line
+         -- Just verify that a known command returns a valid path.
+         local result = subprocess.find_command("cmd")
+         assert.is_string(result)
+         assert.is_nil(result:find("\r"), "Windows: path must not contain CR from where.exe")
+      else
+         -- On POSIX: find_command uses command -v
+         -- Verify it works for a command we know is present
+         local result = subprocess.find_command("sh")
+         assert.is_string(result)
+         assert.matches("sh", result)
+      end
+   end)
+
+   it("find_command extracts first line only from multi-line output", function()
+      -- Simulate where.exe multi-line output by patching exec.run
+      local exec = require("luabench.exec")
+      local original_run = exec.run
+      exec.run = function(_cmd)
+         -- Return simulated where.exe multi-line output with CRLF
+         return true, "C:\\Windows\\System32\\lua.exe\r\nC:\\Program Files\\Lua\\lua.exe\r\n", ""
+      end
+
+      local result = subprocess.find_command("lua")
+
+      exec.run = original_run
+
+      assert.is_string(result)
+      assert.are_equal("C:\\Windows\\System32\\lua.exe", result)
+      assert.is_nil(result:find("\r"), "must not contain CR")
+      assert.is_nil(result:find("\n"), "must not contain LF")
    end)
 
    -- resolve_runtime tests

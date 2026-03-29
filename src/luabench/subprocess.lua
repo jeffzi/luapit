@@ -1,7 +1,9 @@
+local exec = require("luabench.exec")
 local utils = require("pl.utils")
 
 local M = {}
 
+local IS_WINDOWS = package.config:sub(1, 1) == "\\"
 local quote_arg = utils.quote_arg
 
 --- Build a Lua code expression that sets package.path for a target.
@@ -25,19 +27,26 @@ local function build_path_line(lua_paths, indent)
 end
 
 --- Search PATH for a command and return its absolute path.
+--- Uses `where.exe` on Windows and `command -v` on POSIX.
 --- @param cmd string Command name to look up.
 --- @return string|nil path Absolute path if found, nil otherwise.
 local function find_command(cmd)
-   local h = io.popen("command -v " .. quote_arg(cmd) .. " 2>/dev/null")
-   if not h then
+   local ok, stdout
+   if IS_WINDOWS then
+      ok, stdout = exec.run("where.exe " .. quote_arg(cmd))
+   else
+      ok, stdout = exec.run("command -v " .. quote_arg(cmd) .. " 2>/dev/null")
+   end
+   if not ok or stdout == nil then
       return nil
    end
-   local result = h:read("*a")
-   h:close()
-   if not result or result:match("^%s*$") then
+   -- where.exe returns multiple matches separated by \r\n; take the first line only.
+   -- Handles both POSIX (single line with \n) and Windows (\r\n multi-line output).
+   local trimmed = stdout:match("^([^\r\n]-)[%s]*\r?\n") or stdout:match("^([^\r\n]-)$")
+   if not trimmed or trimmed == "" then
       return nil
    end
-   return result:match("^(.-)%s*$")
+   return trimmed
 end
 
 --- Resolve a runtime name or path to an absolute path.
@@ -49,7 +58,7 @@ local function resolve_runtime(name_or_path)
       return nil, "runtime not specified"
    end
    local found = find_command(name_or_path)
-   if not found then
+   if found == nil then
       return nil,
          string.format("runtime not found: %q (not in PATH and not a valid path)", name_or_path)
    end
@@ -65,14 +74,14 @@ end
 --- @return string|nil err Error message on failure.
 local function read_json_results(result_path, cleanup, label)
    local content, read_err = utils.readfile(result_path)
-   if not content then
+   if content == nil then
       cleanup()
       return nil, label .. " did not produce results: " .. tostring(read_err)
    end
    cleanup()
    local json = require("dkjson")
    local results, _, parse_err = json.decode(content)
-   if not results then
+   if results == nil then
       return nil, "failed to parse " .. label .. " results: " .. tostring(parse_err)
    end
    return results
@@ -135,7 +144,8 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
          param_names[#param_names + 1] = name
       end
       table.sort(param_names)
-      for _, name in ipairs(param_names) do
+      for i = 1, #param_names do
+         local name = param_names[i]
          local values = opts.params[name]
          local vals = {}
          for j = 1, #values do
@@ -198,7 +208,7 @@ local function run_subprocess(runtime_path, bench_file, targets, spec_name, opts
    -- Execute subprocess
    local cmd = quote_arg(runtime_path) .. " " .. quote_arg(wrapper_path)
    local stdout, stderr
-   ok, _, stdout, stderr = utils.executeex(cmd) -- luacheck: ignore _
+   ok, stdout, stderr = exec.run(cmd)
 
    if not ok then
       cleanup()
