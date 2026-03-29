@@ -32,6 +32,11 @@ dependencies = {
    "penlight >= 1.11.0",
    "dkjson >= 2.5",
    "chronos >= 0.2",
+   platforms = {
+      unix = {
+         "luaposix >= 36.3",
+      },
+   },
 }
 
 build = {
@@ -43,6 +48,7 @@ build = {
       ["luabench.loader"] = "src/luabench/loader.lua",
       ["luabench.resolve"] = "src/luabench/resolve.lua",
       ["luabench.runner"] = "src/luabench/runner.lua",
+      ["luabench.exec"] = "src/luabench/exec.lua",
       ["luabench.subprocess"] = "src/luabench/subprocess.lua",
       ["luabench.engines"] = "src/luabench/engines/init.lua",
       ["luabench.engines.love2d"] = "src/luabench/engines/love2d.lua",
