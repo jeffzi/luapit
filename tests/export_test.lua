@@ -8,12 +8,13 @@ describe("export", function()
       json = require("dkjson")
    end)
 
-   --- Write JSON to a temp file, read it back as a parsed table, and clean up.
+   --- Write JSON to a temp file, read it back, and clean up.
    --- @param results table
    --- @param targets table
    --- @param version string
    --- @return table data Decoded JSON envelope.
    --- @return boolean ok True if write_json succeeded.
+   --- @return string raw Raw file content before decoding.
    local function write_and_read(results, targets, version)
       local filepath = os.tmpname()
       local ok = export.write_json(filepath, results, targets, version)
@@ -21,7 +22,7 @@ describe("export", function()
       local content = f:read("*a")
       f:close()
       os.remove(filepath)
-      return json.decode(content), ok
+      return json.decode(content), ok, content
    end
 
    it("write_json produces a file containing valid JSON with envelope keys", function()
@@ -135,16 +136,8 @@ describe("export", function()
    end)
 
    it("write_json produces indented output", function()
-      local filepath = os.tmpname()
+      local _, _, raw = write_and_read({}, {}, "0.3.0")
 
-      export.write_json(filepath, {}, {}, "0.3.0")
-
-      local f = io.open(filepath, "r")
-      local content = f:read("*a")
-      f:close()
-      os.remove(filepath)
-
-      -- Indented JSON contains newlines and leading spaces
-      assert.matches("\n ", content)
+      assert.matches("\n ", raw)
    end)
 end)

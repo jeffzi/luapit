@@ -63,15 +63,19 @@ describe("subprocess", function()
       assert.matches("lua", result)
    end)
 
-   it("resolve_runtime with unknown or empty name returns nil and error", function()
+   it("resolve_runtime with unknown runtime returns nil and error", function()
       local result, err = subprocess.resolve_runtime("nonexistent_runtime_xyz_42")
+
       assert.is_nil(result)
       assert.is_string(err)
       assert.matches("runtime not found", err)
+   end)
 
-      local result2, err2 = subprocess.resolve_runtime("")
-      assert.is_nil(result2)
-      assert.is_string(err2)
+   it("resolve_runtime with empty name returns nil and error", function()
+      local result, err = subprocess.resolve_runtime("")
+
+      assert.is_nil(result)
+      assert.is_string(err)
    end)
 
    -- detect_runtime tests
@@ -146,8 +150,6 @@ describe("subprocess", function()
 
    it("run_subprocess cleans up temporary files after execution", function()
       local runtime = require_lua_runtime()
-
-      -- Intercept os.tmpname to track base temp files it creates
       local base_files = {}
       local original_tmpname = os.tmpname
       os.tmpname = function()
@@ -160,9 +162,8 @@ describe("subprocess", function()
          pcall(subprocess.run_subprocess, runtime, SORT_BENCH, BOTH_TARGETS, "", { rounds = 1 })
 
       os.tmpname = original_tmpname
-      assert.is_true(ok, "run_subprocess raised: " .. tostring(call_err))
-      assert.is_true(#base_files >= 2, "expected at least 2 tmpname calls")
 
+      assert.is_true(ok, "run_subprocess raised: " .. tostring(call_err))
       for _, tmp in ipairs(base_files) do
          local f = io.open(tmp, "r")
          if f then

@@ -35,7 +35,7 @@ describe("luapit", function()
       luapit = require("luapit")
    end)
 
-   it("build_parser returns a parser with parse method", function()
+   it("build_parser when called returns a table with parse and pparse methods", function()
       local parser = luapit.build_parser()
 
       assert.is_table(parser)
@@ -48,7 +48,7 @@ describe("luapit", function()
       return luapit.build_parser():pparse(argv)
    end
 
-   it("parsing ref with positional targets succeeds", function()
+   it("pparse with positional targets returns command and targets", function()
       local ok, args = pparse({ "ref", ".#main", ".#dev", "/tmp/mylib" })
 
       assert.is_true(ok)
@@ -56,46 +56,39 @@ describe("luapit", function()
       assert.are_same({ ".#main", ".#dev", "/tmp/mylib" }, args.targets)
    end)
 
-   it("parsing ref with -b flag produces bench list", function()
+   it("pparse with -b flag returns bench list", function()
       local ok, args = pparse({ "ref", ".#main", "-b", "benchmarks/" })
 
       assert.is_true(ok)
       assert.are_same({ "benchmarks/" }, args.bench)
    end)
 
-   it("parsing ref with no targets raises error", function()
-      local ok = pparse({ "ref" })
-
-      assert.is_false(ok)
+   it("pparse with missing required args returns false", function()
+      assert.is_false(pparse({ "ref" }))
+      assert.is_false(pparse({}))
    end)
 
-   it("parsing with no args raises error", function()
-      local ok = pparse({})
-
-      assert.is_false(ok)
-   end)
-
-   it("parsing ref with multiple --filter values produces table", function()
+   it("pparse with multiple --filter values returns filter table", function()
       local ok, args = pparse({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
 
       assert.is_true(ok)
       assert.are_same({ "sort", "hash" }, args.filter)
    end)
 
-   it("parsing ref does not accept old -r flag", function()
+   it("pparse does not accept old -r flag", function()
       local ok = pparse({ "ref", ".#main", "-r", ".#dev" })
 
       assert.is_false(ok)
    end)
 
-   it("parsing ref with --prepare produces prepare string", function()
+   it("pparse with --prepare returns prepare string", function()
       local ok, args = pparse({ "ref", ".#main", "--prepare", "npm ci && npx tstl" })
 
       assert.is_true(ok)
       assert.are_equal("npm ci && npx tstl", args.prepare)
    end)
 
-   it("parsing ref without optional flags leaves defaults", function()
+   it("pparse without optional flags leaves defaults", function()
       local ok, args = pparse({ "ref", ".#main" })
 
       assert.is_true(ok)
@@ -103,7 +96,7 @@ describe("luapit", function()
       assert.are_same({}, args.lua_path)
    end)
 
-   it("parsing ref with --lua-path produces lua_path list", function()
+   it("pparse with --lua-path returns lua_path list", function()
       local ok, args = pparse({ "ref", ".#main", "--lua-path", "lua", "--lua-path", "lib" })
 
       assert.is_true(ok)
@@ -604,9 +597,10 @@ describe("luapit", function()
          return "/usr/local/bin/" .. name
       end)
       local opts = run_main_capturing_opts({ "ref", ".#main", "-R", "luajit" })
-      restore()
 
       assert.are_equal("/usr/local/bin/luajit", opts.runtime)
+
+      restore()
    end)
 
    it("main with -R and invalid runtime exits 1 with error", function()
@@ -624,11 +618,12 @@ describe("luapit", function()
       pcall(luapit.main, { "ref", ".#main", "-R", "bad_runtime" })
 
       local stderr_output = s.read_stderr()
-      restore()
-      s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("runtime not found", stderr_output)
+
+      restore()
+      s.teardown()
    end)
 
    it("main with -R -t combines runtime and test mode", function()
@@ -636,10 +631,11 @@ describe("luapit", function()
          return "/usr/bin/" .. name
       end)
       local opts = run_main_capturing_opts({ "ref", ".#main", "-R", "luajit", "-t" })
-      restore()
 
       assert.are_equal("/usr/bin/luajit", opts.runtime)
       assert.are_equal(1, opts.rounds)
+
+      restore()
    end)
 
    it("main does not call export.write_json when runner errors", function()

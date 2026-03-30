@@ -147,7 +147,6 @@ describe("engines", function()
       local src = os.tmpname()
       local dst = os.tmpname()
       os.remove(dst)
-
       local f = io.open(src, "w")
       f:write("hello world")
       f:close()

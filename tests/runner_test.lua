@@ -16,6 +16,9 @@ describe("runner", function()
    local TARGETS_PAIR = { TARGET_V1, TARGET_V2 }
    local TARGETS_V1 = { TARGET_V1 }
 
+   local RUNTIME = "/usr/bin/lua"
+   local RUNTIME_OPTS = { runtime = RUNTIME }
+
    --- Minimal luamark Result for a single target.
    --- @param name string Target name.
    --- @param rank number Rank (1-based).
@@ -196,9 +199,6 @@ describe("runner", function()
 
       return spy_state, teardown, read_stderr
    end
-
-   local RUNTIME = "/usr/bin/lua"
-   local RUNTIME_OPTS = { runtime = RUNTIME }
 
    it("run when given a bench file renders output with section header", function()
       local spy_state, teardown = setup_run_stubs()

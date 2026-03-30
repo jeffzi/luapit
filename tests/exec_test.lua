@@ -30,14 +30,18 @@ describe("exec", function()
 
    it("run when command exits 0 returns true and captured stdout", function()
       local ok, stdout, stderr = exec.run("echo hello")
+
       assert.is_true(ok)
       assert.matches("hello", stdout)
       assert.are_equal("", stderr)
+   end)
 
-      local ok2, stdout2, stderr2 = exec.run(TRUE_CMD)
-      assert.is_true(ok2)
-      assert.are_equal("", stdout2)
-      assert.are_equal("", stderr2)
+   it("run when command produces no output exits 0 and returns empty strings", function()
+      local ok, stdout, stderr = exec.run(TRUE_CMD)
+
+      assert.is_true(ok)
+      assert.are_equal("", stdout)
+      assert.are_equal("", stderr)
    end)
 
    it("run when command exits non-zero returns false and captured stderr", function()
@@ -92,6 +96,7 @@ describe("exec", function()
       if IS_WINDOWS then
          pending("POSIX only")
       end
+
       simulate_parent_death()
 
       assert.has_error(function()
@@ -99,13 +104,17 @@ describe("exec", function()
       end, "interrupted!")
    end)
 
-   it("stream returns true on success and false on failure with no extra values", function()
+   it("stream returns true on success with no extra values", function()
       local ok, extra = exec.stream(TRUE_CMD)
+
       assert.is_true(ok)
       assert.is_nil(extra)
+   end)
 
-      local ok2 = exec.stream(FALSE_CMD)
-      assert.is_false(ok2)
+   it("stream returns false on failure", function()
+      local ok = exec.stream(FALSE_CMD)
+
+      assert.is_false(ok)
    end)
 
    it("stream when child exits 130 throws interrupted error", function()
@@ -121,6 +130,7 @@ describe("exec", function()
       if IS_WINDOWS then
          pending("POSIX only")
       end
+
       simulate_parent_death()
 
       assert.has_error(function()
