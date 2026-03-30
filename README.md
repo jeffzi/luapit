@@ -1,6 +1,7 @@
 # LuaPit
 
 [![CI](https://github.com/jeffzi/luapit/actions/workflows/busted.yml/badge.svg)](https://github.com/jeffzi/luapit/actions/workflows/busted.yml)
+[![LuaRocks](https://img.shields.io/luarocks/v/jeffzi/luapit)](https://luarocks.org/modules/jeffzi/luapit)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Lua: 5.1+](https://img.shields.io/badge/Lua-5.1%2B-blue.svg)
 
@@ -51,7 +52,7 @@ luapit ref <targets...> [options]
 | ------------------------ | ---------------------------------------------------------------------- | ----------------------- |
 | `<targets>`              | One or more target specifiers (positional, required).                  |                         |
 | `-b, --bench <path>`     | Benchmark files or directories (repeatable).                           | `.` (current directory) |
-| `-R, --runtime <name>`   | Run benchmarks under a different Lua runtime.                          | same process            |
+| `-R, --runtime <name>`   | Lua runtime to run benchmarks under (name or path).                    | auto-detected           |
 | `-o, --output <path>`    | Write results to a JSON file.                                          |                         |
 | `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test.           | off                     |
 | `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                              |                         |
@@ -202,10 +203,9 @@ luapit ref .#main .#dev -b bench/ -p size:100 -p size:10000
 
 ### Runtimes
 
-Without `-R`, benchmarks run in the same Lua process as LuaPit itself.
-
-With `-R`, benchmarks run in a subprocess under the specified runtime. The value can be a
-name resolved from PATH or an absolute path to the binary.
+Benchmarks always run in a subprocess. Without `-R`, LuaPit auto-detects the current
+Lua interpreter. With `-R`, it uses the specified runtime — either a name resolved from
+PATH or an absolute path.
 
 | Runtime          | `-R` value     | Binary resolved     | Notes                         |
 | ---------------- | -------------- | ------------------- | ----------------------------- |
