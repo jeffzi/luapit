@@ -28,8 +28,8 @@ end
 
 describe("engines.defold_html5", function()
    before_each(function()
-      package.loaded["luabench.engines.defold_html5"] = nil
-      defold_html5 = require("luabench.engines.defold_html5")
+      package.loaded["luapit.engines.defold_html5"] = nil
+      defold_html5 = require("luapit.engines.defold_html5")
    end)
 
    -- Integration: full run orchestration
@@ -63,9 +63,7 @@ describe("engines.defold_html5", function()
          end
       end
 
-      if
-         not require_command("luabench-html5-harness", "luabench-html5-harness not found in PATH")
-      then
+      if not require_command("luapit-html5-harness", "luapit-html5-harness not found in PATH") then
          return
       end
 

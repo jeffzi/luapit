@@ -10,13 +10,13 @@ describe("exec", function()
    local original_popen
 
    before_each(function()
-      exec = require("luabench.exec")
+      exec = require("luapit.exec")
       original_popen = io.popen
    end)
 
    after_each(function()
       io.popen = original_popen
-      package.loaded["luabench.exec"] = nil
+      package.loaded["luapit.exec"] = nil
    end)
 
    --- Override exec._get_ppid to simulate parent-death after the first call.

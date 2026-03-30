@@ -1,0 +1,4 @@
+#!/usr/bin/env lua
+
+local luapit = require("luapit")
+luapit.main()

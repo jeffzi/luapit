@@ -36,8 +36,8 @@ describe("engines", function()
    end
 
    before_each(function()
-      package.loaded["luabench.engines"] = nil
-      engines = require("luabench.engines")
+      package.loaded["luapit.engines"] = nil
+      engines = require("luapit.engines")
    end)
 
    -- detect() tests

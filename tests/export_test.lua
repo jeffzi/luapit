@@ -4,7 +4,7 @@ describe("export", function()
    local json
 
    before_each(function()
-      export = require("luabench.export")
+      export = require("luapit.export")
       json = require("dkjson")
    end)
 

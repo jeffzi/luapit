@@ -1,8 +1,8 @@
-local engines = require("luabench.engines")
-local loader = require("luabench.loader")
+local engines = require("luapit.engines")
+local loader = require("luapit.loader")
 local luamark = require("luamark")
 local path = require("pl.path")
-local subprocess = require("luabench.subprocess")
+local subprocess = require("luapit.subprocess")
 
 local M = {}
 
@@ -125,9 +125,7 @@ local function run_with_output(id, run_fn, err_label)
       io.flush()
       error(r2, 0)
    else
-      io.stderr:write(
-         string.format("luabench: warning: %s in %s: %s\n", err_label, id, tostring(r2))
-      )
+      io.stderr:write(string.format("luapit: warning: %s in %s: %s\n", err_label, id, tostring(r2)))
    end
    io.flush()
    return r1
@@ -155,7 +153,7 @@ local function load_targets(bench_file, targets, lua_paths)
          local detail = load_err and (": " .. tostring(load_err)) or ""
          io.stderr:write(
             string.format(
-               "luabench: warning: skipping %s for target %s%s\n",
+               "luapit: warning: skipping %s for target %s%s\n",
                bench_file,
                target.name,
                detail

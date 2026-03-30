@@ -91,11 +91,11 @@ try {
   }
 
   if (title.startsWith("DONE")) {
-    const result = await page.evaluate(() => window.__luabench_result);
+    const result = await page.evaluate(() => window.__luapit_result);
     if (result) {
       process.stdout.write(result);
     } else {
-      process.stderr.write("Error: document.title is DONE but window.__luabench_result is empty\n");
+      process.stderr.write("Error: document.title is DONE but window.__luapit_result is empty\n");
       process.exit(1);
     }
   } else if (title.startsWith("FAIL")) {

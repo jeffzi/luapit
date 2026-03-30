@@ -21,12 +21,12 @@ if [[ -z "${BOB:-}" ]]; then
   }
 fi
 
-command -v luabench >/dev/null || {
-  printf "ERROR: luabench not found in PATH (run 'luarocks make' first)\n" >&2
+command -v luapit >/dev/null || {
+  printf "ERROR: luapit not found in PATH (run 'luarocks make' first)\n" >&2
   exit 1
 }
 
 printf "Running Defold integration test...\n"
-luabench ref . -R defold -b tests/engines/fixtures/ -t
+luapit ref . -R defold -b tests/engines/fixtures/ -t
 
 printf "PASS: Defold integration test succeeded\n"

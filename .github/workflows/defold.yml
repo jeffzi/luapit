@@ -35,7 +35,7 @@ jobs:
         with:
           luaRocksVersion: "3.13.0"
 
-      - name: Install luabench
+      - name: Install luapit
         run: |
           luarocks install busted
           luarocks install penlight
@@ -61,9 +61,9 @@ jobs:
       - name: Run Defold desktop integration test
         if: matrix.platform == 'x86_64-linux'
         timeout-minutes: 10
-        run: luabench ref . -R defold -b tests/engines/fixtures/ -t
+        run: luapit ref . -R defold -b tests/engines/fixtures/ -t
 
       - name: Run Defold HTML5 integration test
         if: matrix.platform == 'js-web'
         timeout-minutes: 10
-        run: luabench ref . -R defold-html5 -b tests/engines/fixtures/ -t
+        run: luapit ref . -R defold-html5 -b tests/engines/fixtures/ -t

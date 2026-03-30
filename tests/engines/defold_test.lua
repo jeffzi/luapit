@@ -28,8 +28,8 @@ end
 
 describe("engines.defold", function()
    before_each(function()
-      package.loaded["luabench.engines.defold"] = nil
-      defold = require("luabench.engines.defold")
+      package.loaded["luapit.engines.defold"] = nil
+      defold = require("luapit.engines.defold")
    end)
 
    -- Integration test (conditional)

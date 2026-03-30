@@ -1,6 +1,6 @@
 local path = require("pl.path")
 local stringx = require("pl.stringx")
-local subprocess = require("luabench.subprocess")
+local subprocess = require("luapit.subprocess")
 local utils = require("pl.utils")
 
 local M = {}
@@ -10,9 +10,9 @@ local M = {}
 --- engine name itself).
 --- @type table<string, {module: string, runtime_cmd: string|nil}>
 local ENGINES = {
-   love = { module = "luabench.engines.love2d" },
-   defold = { module = "luabench.engines.defold", runtime_cmd = "dmengine_headless" },
-   ["defold-html5"] = { module = "luabench.engines.defold_html5", runtime_cmd = "node" },
+   love = { module = "luapit.engines.love2d" },
+   defold = { module = "luapit.engines.defold", runtime_cmd = "dmengine_headless" },
+   ["defold-html5"] = { module = "luapit.engines.defold_html5", runtime_cmd = "node" },
 }
 
 --- Check if a runtime name or path matches a known engine adapter.
@@ -160,7 +160,7 @@ function M.append_wrapper_body(parts, bench_file, targets, spec_name, opts, resu
 end
 
 --- Return a step-runner closure that executes a command and calls cleanup on failure.
---- @param exec_mod table Module with a `run(cmd)` function (luabench.exec).
+--- @param exec_mod table Module with a `run(cmd)` function (luapit.exec).
 --- @param cleanup fun() Cleanup function invoked before returning a failure error.
 --- @return fun(cmd: string, label: string): string|nil, string|nil step_fn
 function M.make_exec_step(exec_mod, cleanup)

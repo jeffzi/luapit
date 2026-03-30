@@ -9,13 +9,13 @@ function M.load_benchmark(filepath)
    local ok, result = pcall(dofile, filepath)
    if not ok then
       io.stderr:write(
-         string.format("luabench: warning: failed to load %s: %s\n", filepath, tostring(result))
+         string.format("luapit: warning: failed to load %s: %s\n", filepath, tostring(result))
       )
       return nil
    end
 
    if type(result) ~= "table" then
-      io.stderr:write("luabench: warning: " .. filepath .. " did not return a table\n")
+      io.stderr:write("luapit: warning: " .. filepath .. " did not return a table\n")
       return nil
    end
 
@@ -26,7 +26,7 @@ function M.load_benchmark(filepath)
          if type(entry) ~= "table" or type(entry.fn) ~= "function" then
             io.stderr:write(
                string.format(
-                  "luabench: warning: %s: spec %q is not a table with an fn field\n",
+                  "luapit: warning: %s: spec %q is not a table with an fn field\n",
                   filepath,
                   tostring(name)
                )

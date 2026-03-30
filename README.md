@@ -1,13 +1,13 @@
-# LuaBench
+# LuaPit
 
-[![CI](https://github.com/jeffzi/luabench/actions/workflows/busted.yml/badge.svg)](https://github.com/jeffzi/luabench/actions/workflows/busted.yml)
+[![CI](https://github.com/jeffzi/luapit/actions/workflows/busted.yml/badge.svg)](https://github.com/jeffzi/luapit/actions/workflows/busted.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Lua: 5.1+](https://img.shields.io/badge/Lua-5.1%2B-blue.svg)
 
 CLI companion to [LuaMark](https://github.com/jeffzi/luamark) for comparing Lua
 library performance across git references.
 
-LuaBench runs [LuaMark](https://github.com/jeffzi/luamark) benchmarks against one or
+LuaPit runs [LuaMark](https://github.com/jeffzi/luamark) benchmarks against one or
 more versions of a Lua library (git refs, tags, branches, or local directories) and
 prints a comparison table with median times, confidence intervals, and rankings. Each
 version runs in isolation, preventing shared-state contamination.
@@ -20,7 +20,7 @@ benchmarking code that depends on engine-specific APIs.
 ## Quick example
 
 ```sh
-luabench ref .#main .#feature -b benchmarks/
+luapit ref .#main .#feature -b benchmarks/
 ```
 
 This compares the library at the `main` and `feature` git refs, using every `*_bench.lua`
@@ -32,25 +32,25 @@ untouched.
 Requires Lua >= 5.1.
 
 ```sh
-luarocks install https://raw.githubusercontent.com/jeffzi/luabench/main/luabench-dev-1.rockspec
+luarocks install https://raw.githubusercontent.com/jeffzi/luapit/main/luapit-dev-1.rockspec
 ```
 
 Or from a local clone:
 
 ```sh
-luarocks make luabench-dev-1.rockspec
+luarocks make luapit-dev-1.rockspec
 ```
 
 LuaRocks pulls in the dependencies automatically.
 
 ## Usage
 
-LuaBench provides one command: `ref`.
+LuaPit provides one command: `ref`.
 
 ### The `ref` command
 
 ```text
-luabench ref <targets...> [options]
+luapit ref <targets...> [options]
 ```
 
 | Option                   | Description                                                            | Default                 |
@@ -67,7 +67,7 @@ luabench ref <targets...> [options]
 
 ### Target specifiers
 
-A target tells LuaBench where to find a version of the library to benchmark. The general
+A target tells LuaPit where to find a version of the library to benchmark. The general
 format is:
 
 ```text
@@ -87,7 +87,7 @@ Aliases disambiguate targets that would otherwise share a display name. The bare
 resolves to the git repository root, or the current directory if not inside a git repo.
 
 Remote targets use a shallow clone when possible (branches and tags). Commit hashes fall
-back to a full clone. LuaBench removes all temporary clones when the run finishes.
+back to a full clone. LuaPit removes all temporary clones when the run finishes.
 
 ### Prepare hook
 
@@ -96,26 +96,26 @@ starts. This is useful for projects that compile to Lua (TypeScript-to-Lua, Fenn
 MoonScript, Teal) where the repository contains source files but no `.lua` output.
 
 ```sh
-luabench ref .#main .#feature -b benchmarks/ \
+luapit ref .#main .#feature -b benchmarks/ \
    --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
 ```
 
 The command runs only in cloned targets (those created from `repo#ref` specifiers). Working
 tree (`.`) and local directory targets are used as-is.
 
-If the command fails for a target, LuaBench prints a warning, removes that target, and
+If the command fails for a target, LuaPit prints a warning, removes that target, and
 continues with the remaining targets. Output from the command streams directly to the
 terminal so build errors are visible.
 
 ### Custom Lua path
 
-By default, LuaBench prepends each target's root directory to `package.path`. If your
+By default, LuaPit prepends each target's root directory to `package.path`. If your
 project's Lua files live in a subdirectory (common with compile-to-Lua toolchains),
-use `--lua-path` to tell LuaBench where to look instead.
+use `--lua-path` to tell LuaPit where to look instead.
 
 ```sh
 # Transpiled Lua output lives in lua/ within each target
-luabench ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
+luapit ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
    --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
 ```
 
@@ -123,7 +123,7 @@ luabench ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
 subdirectory, pass both:
 
 ```sh
-luabench ref .#main -b bench/ --lua-path . --lua-path lua
+luapit ref .#main -b bench/ --lua-path . --lua-path lua
 ```
 
 Each path is relative to the target directory, so multi-ref comparisons work correctly
@@ -131,7 +131,7 @@ Each path is relative to the target directory, so multi-ref comparisons work cor
 
 ### Benchmark files
 
-LuaBench discovers files matching `*_bench.lua`. Pass a directory to `-b` and it searches
+LuaPit discovers files matching `*_bench.lua`. Pass a directory to `-b` and it searches
 recursively, or pass individual file paths.
 
 A benchmark file returns a table in one of two formats.
@@ -177,7 +177,7 @@ Each spec is a LuaMark spec table. Beyond `fn`, you can use:
   When set, all ratios in the group are computed relative to this spec's median. Without a
   baseline, ratios are relative to the fastest spec.
 
-**Target isolation.** For each target, LuaBench prepends the target's directory to
+**Target isolation.** For each target, LuaPit prepends the target's directory to
 `package.path` before loading the benchmark (or the subdirectories specified by
 `--lua-path`). When you write `require("mylib")`, it resolves against that target's
 code. `package.loaded` is restored between targets so modules do not leak across
@@ -192,7 +192,7 @@ Multiple filters use OR logic: a benchmark runs if it matches any pattern.
 
 ```sh
 # Run only benchmarks whose ID contains "sort" or "insert"
-luabench ref .#main .#dev -b bench/ --filter sort --filter insert
+luapit ref .#main .#dev -b bench/ --filter sort --filter insert
 ```
 
 ### Parameters
@@ -204,12 +204,12 @@ Repeat `-p` with the same name to pass multiple values, which LuaMark receives a
 array:
 
 ```sh
-luabench ref .#main .#dev -b bench/ -p size:100 -p size:10000
+luapit ref .#main .#dev -b bench/ -p size:100 -p size:10000
 ```
 
 ### Runtimes
 
-Without `-R`, benchmarks run in the same Lua process as LuaBench itself.
+Without `-R`, benchmarks run in the same Lua process as LuaPit itself.
 
 With `-R`, benchmarks run in a subprocess under the specified runtime. The value can be a
 name resolved from PATH or an absolute path to the binary.
@@ -229,14 +229,14 @@ into it, and run the engine in headless mode.
 
 **Love2D** (`-R love`)
 
-Requires `love` on PATH. LuaBench creates a temporary Love2D project with graphics,
+Requires `love` on PATH. LuaPit creates a temporary Love2D project with graphics,
 audio, and input modules disabled and runs benchmarks through `love.load()`. Use this to
 benchmark code that depends on Love2D APIs such as `love.math`.
 
 **Defold** (`-R defold`)
 
 Requires `dmengine_headless` and `java` on PATH, plus `bob.jar` (either set the `BOB`
-environment variable to the jar path or place it on PATH). LuaBench scaffolds a minimal
+environment variable to the jar path or place it on PATH). LuaPit scaffolds a minimal
 Defold project, builds it with bob.jar, and launches the headless engine.
 
 **Defold HTML5** (`-R defold-html5`)
@@ -293,7 +293,7 @@ Playwright harness.
 
 | Field                          | Description                                                                 |
 | ------------------------------ | --------------------------------------------------------------------------- |
-| `version`                      | LuaBench version that produced the file.                                    |
+| `version`                      | LuaPit version that produced the file.                                      |
 | `timestamp`                    | UTC timestamp of the run.                                                   |
 | `targets[].name`               | Display name of each target.                                                |
 | `targets[].spec`               | Original target specifier string.                                           |

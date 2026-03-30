@@ -1,10 +1,10 @@
 local argparse = require("argparse")
-local discover = require("luabench.discover")
-local engines = require("luabench.engines")
-local export = require("luabench.export")
-local resolve = require("luabench.resolve")
-local runner = require("luabench.runner")
-local subprocess = require("luabench.subprocess")
+local discover = require("luapit.discover")
+local engines = require("luapit.engines")
+local export = require("luapit.export")
+local resolve = require("luapit.resolve")
+local runner = require("luapit.runner")
+local subprocess = require("luapit.subprocess")
 
 local M = {}
 
@@ -13,7 +13,7 @@ M._VERSION = "0.5.0"
 --- Write an error message to stderr and exit with code 1.
 --- @param msg string|nil Error message (without prefix or newline).
 local function die(msg)
-   io.stderr:write("luabench: " .. tostring(msg) .. "\n")
+   io.stderr:write("luapit: " .. tostring(msg) .. "\n")
    os.exit(1)
 end
 
@@ -49,7 +49,7 @@ end
 --- @return table parser Configured argparse parser.
 function M.build_parser()
    local parser =
-      argparse("luabench", "Compare Lua library performance across git refs."):add_help(true)
+      argparse("luapit", "Compare Lua library performance across git refs."):add_help(true)
    parser:command_target("command")
    parser:require_command(true)
 

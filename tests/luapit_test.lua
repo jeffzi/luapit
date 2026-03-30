@@ -2,8 +2,8 @@
 
 local path = require("pl.path")
 
-describe("luabench", function()
-   local luabench
+describe("luapit", function()
+   local luapit
 
    local CWD = path.currentdir()
    local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
@@ -32,11 +32,11 @@ describe("luabench", function()
    }
 
    before_each(function()
-      luabench = require("luabench")
+      luapit = require("luapit")
    end)
 
    it("build_parser returns a parser with parse method", function()
-      local parser = luabench.build_parser()
+      local parser = luapit.build_parser()
 
       assert.is_table(parser)
       assert.is_function(parser.parse)
@@ -45,7 +45,7 @@ describe("luabench", function()
 
    --- Build a fresh parser and parse argv, returning (ok, args).
    local function pparse(argv)
-      return luabench.build_parser():pparse(argv)
+      return luapit.build_parser():pparse(argv)
    end
 
    it("parsing ref with positional targets succeeds", function()
@@ -111,9 +111,9 @@ describe("luabench", function()
    end)
 
    it("discover feeds bench files into runner for full pipeline", function()
-      local discover_mod = require("luabench.discover")
-      local runner_mod = require("luabench.runner")
-      local subprocess_mod = require("luabench.subprocess")
+      local discover_mod = require("luapit.discover")
+      local runner_mod = require("luapit.runner")
+      local subprocess_mod = require("luapit.subprocess")
       local luamark = require("luamark")
 
       local original_run_subprocess = subprocess_mod.run_subprocess
@@ -156,11 +156,11 @@ describe("luabench", function()
    local function setup_main_stubs(overrides)
       overrides = overrides or {}
 
-      local resolve_mod = require("luabench.resolve")
-      local discover_mod = require("luabench.discover")
-      local runner_mod = require("luabench.runner")
-      local export_mod = require("luabench.export")
-      local subprocess_mod = require("luabench.subprocess")
+      local resolve_mod = require("luapit.resolve")
+      local discover_mod = require("luapit.discover")
+      local runner_mod = require("luapit.runner")
+      local export_mod = require("luapit.export")
+      local subprocess_mod = require("luapit.subprocess")
 
       local originals = {
          resolve_targets = resolve_mod.resolve_targets,
@@ -246,7 +246,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main", ".#dev" })
+      luapit.main({ "ref", ".#main", ".#dev" })
 
       s.teardown()
 
@@ -261,7 +261,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main" })
+      luapit.main({ "ref", ".#main" })
 
       s.teardown()
 
@@ -289,7 +289,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main" })
+      pcall(luapit.main, { "ref", ".#main" })
 
       s.teardown()
 
@@ -306,7 +306,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main" })
+      luapit.main({ "ref", ".#main" })
 
       s.teardown()
 
@@ -322,7 +322,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main", "-b", "benchmarks/", "-b", "tests/" })
+      luapit.main({ "ref", ".#main", "-b", "benchmarks/", "-b", "tests/" })
 
       s.teardown()
 
@@ -341,7 +341,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", "bad" })
+      pcall(luapit.main, { "ref", "bad" })
 
       local stderr_output = s.read_stderr()
       s.teardown()
@@ -365,7 +365,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main" })
+      pcall(luapit.main, { "ref", ".#main" })
 
       local stderr_output = s.read_stderr()
       s.teardown()
@@ -394,7 +394,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main", ".#dev" })
+      luapit.main({ "ref", ".#main", ".#dev" })
 
       s.teardown()
 
@@ -414,7 +414,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main(cli_args)
+      luapit.main(cli_args)
       s.teardown()
 
       return captured_opts
@@ -495,7 +495,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main", "-p", "bad" })
+      pcall(luapit.main, { "ref", ".#main", "-p", "bad" })
 
       local stderr_output = s.read_stderr()
       s.teardown()
@@ -505,7 +505,7 @@ describe("luabench", function()
    end)
 
    it("_VERSION is 0.5.0", function()
-      assert.are_equal("0.5.0", luabench._VERSION)
+      assert.are_equal("0.5.0", luapit._VERSION)
    end)
 
    it("main calls export.write_json when -o is specified", function()
@@ -528,7 +528,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main", "-o", "/tmp/test_output.json" })
+      luapit.main({ "ref", ".#main", "-o", "/tmp/test_output.json" })
 
       s.teardown()
 
@@ -548,7 +548,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main" })
+      luapit.main({ "ref", ".#main" })
 
       s.teardown()
 
@@ -556,11 +556,11 @@ describe("luabench", function()
    end)
 
    --- Helper: stub a subprocess module function, returning restore fn.
-   --- @param field string Field name on luabench.subprocess to replace.
+   --- @param field string Field name on luapit.subprocess to replace.
    --- @param fake function Replacement function.
    --- @return fun() restore Restores the original function.
    local function stub_subprocess_fn(field, fake)
-      local subprocess_mod = require("luabench.subprocess")
+      local subprocess_mod = require("luapit.subprocess")
       local original = subprocess_mod[field]
       subprocess_mod[field] = fake
       return function()
@@ -590,7 +590,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main" })
+      pcall(luapit.main, { "ref", ".#main" })
 
       local stderr_output = s.read_stderr()
       s.teardown()
@@ -621,7 +621,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main", "-R", "bad_runtime" })
+      pcall(luapit.main, { "ref", ".#main", "-R", "bad_runtime" })
 
       local stderr_output = s.read_stderr()
       restore()
@@ -658,7 +658,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main", "-o", "/tmp/out.json" })
+      pcall(luapit.main, { "ref", ".#main", "-o", "/tmp/out.json" })
 
       s.teardown()
 
@@ -678,7 +678,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main" })
+      pcall(luapit.main, { "ref", ".#main" })
 
       local stderr_output = s.read_stderr()
       s.teardown()
@@ -696,7 +696,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main", "--prepare", "echo hi" })
+      luapit.main({ "ref", ".#main", "--prepare", "echo hi" })
 
       s.teardown()
 
@@ -722,7 +722,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main", ".#dev", "--prepare", "make build" })
+      luapit.main({ "ref", ".#main", ".#dev", "--prepare", "make build" })
 
       s.teardown()
 
@@ -741,7 +741,7 @@ describe("luabench", function()
          end,
       })
 
-      pcall(luabench.main, { "ref", ".#main", "--prepare", "false" })
+      pcall(luapit.main, { "ref", ".#main", "--prepare", "false" })
 
       local stderr_output = s.read_stderr()
       s.teardown()
@@ -759,7 +759,7 @@ describe("luabench", function()
          end,
       })
 
-      luabench.main({ "ref", ".#main" })
+      luapit.main({ "ref", ".#main" })
 
       s.teardown()
 

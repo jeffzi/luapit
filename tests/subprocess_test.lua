@@ -13,9 +13,9 @@ describe("subprocess", function()
    local SORT_BENCH = path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua")
 
    before_each(function()
-      exec = require("luabench.exec")
+      exec = require("luapit.exec")
       original_exec_run = exec.run
-      subprocess = require("luabench.subprocess")
+      subprocess = require("luapit.subprocess")
    end)
 
    after_each(function()

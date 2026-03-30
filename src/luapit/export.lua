@@ -7,7 +7,7 @@ local M = {}
 --- @param filepath string Output file path.
 --- @param results table[] Flat array of {file, spec, targets} benchmark result entries.
 --- @param targets {name: string, original_spec: string|nil}[] Resolved targets.
---- @param version string LuaBench version string.
+--- @param version string LuaPit version string.
 --- @return true|nil ok True on success, nil on failure.
 --- @return string|nil err Error message on failure.
 function M.write_json(filepath, results, targets, version)

@@ -1,4 +1,4 @@
 modules = {
-   ["luabench"] = "src/luabench.lua",
-   ["luabench.*"] = "src",
+   ["luapit"] = "src/luapit.lua",
+   ["luapit.*"] = "src",
 }

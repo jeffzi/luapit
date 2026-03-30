@@ -1,9 +1,9 @@
 local dir = require("pl.dir")
-local exec = require("luabench.exec")
+local exec = require("luapit.exec")
 local json = require("dkjson")
 local utils = require("pl.utils")
 
-local engines = require("luabench.engines")
+local engines = require("luapit.engines")
 
 local quote_arg = utils.quote_arg
 
@@ -34,7 +34,7 @@ local function generate_html5_wrapper(bench_file, targets, spec_name, opts)
    parts[#parts + 1] = [[      local safe = json_str]]
       .. [[:gsub("\\", "\\\\"):gsub("'", "\\'")]]
       .. [[:gsub("\n", "\\n"):gsub("\r", "\\r")]]
-   parts[#parts + 1] = [[      html5.run("window.__luabench_result = '" .. safe .. "'")]]
+   parts[#parts + 1] = [[      html5.run("window.__luapit_result = '" .. safe .. "'")]]
    parts[#parts + 1] = [[      html5.run("document.title = 'DONE'")]]
 
    parts[#parts + 1] = "   end)"
@@ -58,7 +58,7 @@ end
 --- @return string|nil tmpdir Path to scaffolded project directory.
 --- @return string|nil err Error message on failure.
 local function scaffold_html5_project(bench_file, targets, spec_name, opts)
-   local defold = require("luabench.engines.defold")
+   local defold = require("luapit.engines.defold")
    local tmpdir, result_path = defold.scaffold_project(bench_file, targets, spec_name, opts)
    if tmpdir == nil then
       return nil, result_path
@@ -93,15 +93,15 @@ local function check_playwright(node_path)
    return true
 end
 
---- Locate the luabench-html5-harness script in PATH.
+--- Locate the luapit-html5-harness script in PATH.
 --- @return string|nil path Absolute path if found.
 --- @return string|nil err Error message if not found.
 local function locate_harness()
-   local found = engines.find_command("luabench-html5-harness")
+   local found = engines.find_command("luapit-html5-harness")
    if found ~= nil then
       return found
    end
-   return nil, "luabench-html5-harness not found in PATH"
+   return nil, "luapit-html5-harness not found in PATH"
 end
 
 --- Run a benchmark inside the Defold HTML5 runtime.
@@ -115,7 +115,7 @@ end
 --- @return table[]|nil results Parsed luamark results, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.run(runtime_path, bench_file, targets, spec_name, opts)
-   local defold = require("luabench.engines.defold")
+   local defold = require("luapit.engines.defold")
    local java_ok, java_err = defold.check_java()
    if java_ok == nil then
       return nil, java_err
@@ -175,7 +175,7 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
 
    -- The bundle output structure is: bundle_dir/<project_title>/
-   local game_dir = bundle_dir .. "/luabench"
+   local game_dir = bundle_dir .. "/luapit"
 
    local run_stdout, run_err = exec_step(
       string.format(

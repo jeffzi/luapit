@@ -12,7 +12,7 @@ describe("resolve", function()
    local LIBV1_DIR = plpath.join(FIXTURE_DIR, "targets", "libv1")
 
    before_each(function()
-      resolve = require("luabench.resolve")
+      resolve = require("luapit.resolve")
    end)
 
    for _, case in ipairs({
@@ -230,7 +230,7 @@ describe("resolve", function()
 
    --- Skip the test if not inside a git repo.
    local function require_git_repo()
-      local exec = require("luabench.exec")
+      local exec = require("luapit.exec")
       local ok, stdout = exec.run("git rev-parse --show-toplevel 2>/dev/null")
       if not ok or stdout == nil or stdout:match("^%s*$") then
          pending("not inside a git repo")
@@ -242,7 +242,7 @@ describe("resolve", function()
    it("cleanup removes temp dirs where cleanup is true", function()
       local tmp = plpath.tmpname()
       os.remove(tmp)
-      local temp_dir = tmp .. "-luabench-cleanup-test"
+      local temp_dir = tmp .. "-luapit-cleanup-test"
       pldir.makepath(temp_dir)
       assert.is_true(plpath.isdir(temp_dir))
 
@@ -369,7 +369,7 @@ describe("resolve", function()
    local function make_prepare_temp_dir()
       local tmp = plpath.tmpname()
       os.remove(tmp)
-      local dir = tmp .. "-luabench-prepare-test"
+      local dir = tmp .. "-luapit-prepare-test"
       pldir.makepath(dir)
       temp_dirs[#temp_dirs + 1] = dir
       return dir

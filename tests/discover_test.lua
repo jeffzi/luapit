@@ -7,7 +7,7 @@ describe("discover", function()
    local ABS_FIXTURES = path.abspath(FIXTURES_DIR)
 
    before_each(function()
-      discover = require("luabench.discover").discover
+      discover = require("luapit.discover").discover
    end)
 
    it("returns empty table for empty input", function()

@@ -26,7 +26,7 @@ jobs:
         with:
           version: "11.5"
 
-      - name: Install luabench
+      - name: Install luapit
         run: |
           luarocks install busted
           luarocks install penlight
@@ -39,4 +39,4 @@ jobs:
 
       - name: Run Love2D integration test
         timeout-minutes: 5
-        run: luabench ref . -R love -b tests/engines/fixtures/ -t
+        run: luapit ref . -R love -b tests/engines/fixtures/ -t

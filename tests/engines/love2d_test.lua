@@ -15,7 +15,7 @@ describe("engines.love2d", function()
    --- @param stub fun(original: function): function Factory receiving the original; returns the stub.
    --- @param callback function Code to run while stub is active.
    local function with_find_module_stub(stub, callback)
-      local engines = require("luabench.engines")
+      local engines = require("luapit.engines")
       local original = engines.find_module_path
       engines.find_module_path = stub(original)
       local ok, err = pcall(callback)
@@ -26,8 +26,8 @@ describe("engines.love2d", function()
    end
 
    before_each(function()
-      package.loaded["luabench.engines.love2d"] = nil
-      love2d = require("luabench.engines.love2d")
+      package.loaded["luapit.engines.love2d"] = nil
+      love2d = require("luapit.engines.love2d")
    end)
 
    -- run() error handling tests
@@ -49,7 +49,7 @@ describe("engines.love2d", function()
    -- Integration test (conditional)
 
    it("run with actual love binary returns results", function()
-      local subprocess = require("luabench.subprocess")
+      local subprocess = require("luapit.subprocess")
       local love_path = subprocess.resolve_runtime("love")
       if love_path == nil then
          pending("love not found in PATH")

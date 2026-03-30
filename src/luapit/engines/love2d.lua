@@ -1,8 +1,8 @@
 local dir = require("pl.dir")
-local engines = require("luabench.engines")
-local exec = require("luabench.exec")
+local engines = require("luapit.engines")
+local exec = require("luapit.exec")
 local stringx = require("pl.stringx")
-local subprocess = require("luabench.subprocess")
+local subprocess = require("luapit.subprocess")
 local utils = require("pl.utils")
 
 local M = {}
@@ -14,7 +14,7 @@ local quote_arg = utils.quote_arg
 --- @type string
 local CONF_TEMPLATE = [[
 function love.conf(t)
-   t.title = "luabench"
+   t.title = "luapit"
    t.console = true
    t.modules.window = false
    t.modules.graphics = false
@@ -54,7 +54,7 @@ local function generate_love_wrapper(bench_file, targets, spec_name, opts, resul
 
    parts[#parts + 1] = "   end)"
    parts[#parts + 1] = "   if not ok then"
-   parts[#parts + 1] = '      io.stderr:write("luabench: engine error: " .. tostring(err) .. "\\n")'
+   parts[#parts + 1] = '      io.stderr:write("luapit: engine error: " .. tostring(err) .. "\\n")'
    parts[#parts + 1] = "      love.event.quit(1)"
    parts[#parts + 1] = "      return"
    parts[#parts + 1] = "   end"

@@ -1,4 +1,0 @@
-#!/usr/bin/env lua
-
-local luabench = require("luabench")
-luabench.main()

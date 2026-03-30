@@ -1,7 +1,7 @@
 ---@diagnostic disable: need-check-nil
 local path = require("pl.path")
 
-local loader = require("luabench.loader")
+local loader = require("luapit.loader")
 
 local FIXTURE_DIR = path.join(path.currentdir(), "tests", "fixtures")
 

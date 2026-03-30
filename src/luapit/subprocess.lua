@@ -1,4 +1,4 @@
-local exec = require("luabench.exec")
+local exec = require("luapit.exec")
 local path = require("pl.path")
 local stringx = require("pl.stringx")
 local utils = require("pl.utils")

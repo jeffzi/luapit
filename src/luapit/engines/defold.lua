@@ -1,9 +1,9 @@
 local dir = require("pl.dir")
-local exec = require("luabench.exec")
-local subprocess = require("luabench.subprocess")
+local exec = require("luapit.exec")
+local subprocess = require("luapit.subprocess")
 local utils = require("pl.utils")
 
-local engines = require("luabench.engines")
+local engines = require("luapit.engines")
 
 local quote_arg = utils.quote_arg
 
@@ -12,7 +12,7 @@ local M = {}
 --- Defold game.project template.
 --- @type string
 local GAME_PROJECT = [[[project]
-title = luabench
+title = luapit
 
 [display]
 width = 960
@@ -83,7 +83,7 @@ local function generate_defold_wrapper(bench_file, targets, spec_name, opts, res
 
    parts[#parts + 1] = "   end)"
    parts[#parts + 1] = "   if not ok then"
-   parts[#parts + 1] = '      io.stderr:write("luabench: engine error: " .. tostring(err) .. "\\n")'
+   parts[#parts + 1] = '      io.stderr:write("luapit: engine error: " .. tostring(err) .. "\\n")'
    parts[#parts + 1] = "      os.exit(1)"
    parts[#parts + 1] = "      return"
    parts[#parts + 1] = "   end"

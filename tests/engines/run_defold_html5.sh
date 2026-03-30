@@ -26,17 +26,17 @@ node -e "require('playwright')" 2>/dev/null || {
   exit 0
 }
 
-command -v luabench >/dev/null || {
-  printf "ERROR: luabench not found in PATH (run 'luarocks make' first)\n" >&2
+command -v luapit >/dev/null || {
+  printf "ERROR: luapit not found in PATH (run 'luarocks make' first)\n" >&2
   exit 1
 }
 
-command -v luabench-html5-harness >/dev/null || {
-  printf "ERROR: luabench-html5-harness not found in PATH (run 'luarocks make' first)\n" >&2
+command -v luapit-html5-harness >/dev/null || {
+  printf "ERROR: luapit-html5-harness not found in PATH (run 'luarocks make' first)\n" >&2
   exit 1
 }
 
 printf "Running Defold HTML5 integration test...\n"
-luabench ref . -R defold-html5 -b tests/engines/fixtures/ -t
+luapit ref . -R defold-html5 -b tests/engines/fixtures/ -t
 
 printf "PASS: Defold HTML5 integration test succeeded\n"

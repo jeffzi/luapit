@@ -1,4 +1,4 @@
-local exec = require("luabench.exec")
+local exec = require("luapit.exec")
 local path = require("pl.path")
 local pldir = require("pl.dir")
 local stringx = require("pl.stringx")
@@ -130,7 +130,7 @@ function M.validate_targets(parsed_list, raw_specs)
    return true
 end
 
---- Create a temp directory with a luabench prefix.
+--- Create a temp directory with a luapit prefix.
 --- @param prefix string Prefix for the directory name.
 --- @return string|nil dir_path Path to created directory, or nil on error.
 --- @return string|nil err Error message on failure.
@@ -138,7 +138,7 @@ local function make_temp_dir(prefix)
    local tmp = path.tmpname()
    os.remove(tmp)
    local sanitized = prefix:gsub("[^%w%-_]", "_")
-   local dir_path = tmp .. "-luabench-" .. sanitized
+   local dir_path = tmp .. "-luapit-" .. sanitized
    local ok, err = pldir.makepath(dir_path)
    if ok == nil then
       return nil, err
@@ -301,11 +301,7 @@ function M.cleanup(targets)
          local ok, err = pcall(pldir.rmtree, t.path)
          if not ok then
             io.stderr:write(
-               string.format(
-                  "luabench: warning: failed to clean up %s: %s\n",
-                  t.path,
-                  tostring(err)
-               )
+               string.format("luapit: warning: failed to clean up %s: %s\n", t.path, tostring(err))
             )
          end
       end
@@ -331,7 +327,7 @@ function M.prepare_targets(targets, cmd)
             result[#result + 1] = t
          else
             io.stderr:write(
-               string.format("luabench: warning: prepare command failed for %s, skipping\n", t.name)
+               string.format("luapit: warning: prepare command failed for %s, skipping\n", t.name)
             )
             M.cleanup({ t })
          end

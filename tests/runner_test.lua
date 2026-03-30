@@ -39,7 +39,7 @@ describe("runner", function()
    local FAKE_RESULTS_V1 = { FAKE_V1 }
 
    before_each(function()
-      runner = require("luabench.runner")
+      runner = require("luapit.runner")
    end)
 
    it(
@@ -150,7 +150,7 @@ describe("runner", function()
    --- @return table spy_state, fun() teardown, fun() read_stderr
    local function setup_run_stubs(fake_subprocess)
       local luamark = require("luamark")
-      local subprocess = require("luabench.subprocess")
+      local subprocess = require("luapit.subprocess")
       local originals = {
          render = luamark.render,
          run_subprocess = subprocess.run_subprocess,
@@ -242,7 +242,7 @@ describe("runner", function()
 
    it("run when a target fails to load includes error reason in stderr warning", function()
       local _, teardown, read_stderr = setup_run_stubs()
-      local loader = require("luabench.loader")
+      local loader = require("luapit.loader")
       local original_load = loader.load_benchmark
       loader.load_benchmark = function()
          error("deliberate load error")
@@ -492,7 +492,7 @@ describe("runner", function()
    --- @param mock_adapter table Mock adapter with a run method.
    --- @return fun() restore Restores the original function.
    local function stub_engine_adapter(mock_adapter)
-      local engines = require("luabench.engines")
+      local engines = require("luapit.engines")
       local original = engines.get_adapter
       engines.get_adapter = function()
          return mock_adapter
