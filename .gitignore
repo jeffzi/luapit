@@ -40,7 +40,7 @@ luac.out
 *.hex
 
 # Coverage
-luacov.*.out
+luacov.*.out*
 luacov_report.html*
 
 # Node
