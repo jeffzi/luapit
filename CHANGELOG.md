@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows support: run benchmarks on Windows
 - Per-target status lines printed as each benchmark completes
 
+### Changed
+
+- Project renamed from LuaBench to **LuaPit** — package, module paths,
+  CLI binary, and repository URL all updated
+
 ### Removed
 
 - Progress bar

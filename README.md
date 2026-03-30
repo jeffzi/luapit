@@ -4,18 +4,12 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Lua: 5.1+](https://img.shields.io/badge/Lua-5.1%2B-blue.svg)
 
-CLI companion to [LuaMark](https://github.com/jeffzi/luamark) for comparing Lua
-library performance across git references.
+Pit Lua library versions against each other.
 
-LuaPit runs [LuaMark](https://github.com/jeffzi/luamark) benchmarks against one or
-more versions of a Lua library (git refs, tags, branches, or local directories) and
-prints a comparison table with median times, confidence intervals, and rankings. Each
-version runs in isolation, preventing shared-state contamination.
-
-In addition to standard Lua interpreters, it supports Love2D and Defold runtimes for
-benchmarking code that depends on engine-specific APIs.
-
-**Status:** Under development. Not yet published to luarocks.
+LuaPit runs [LuaMark](https://github.com/jeffzi/luamark) benchmarks across git refs,
+tags, branches, or local directories and prints a comparison table with median times,
+confidence intervals, and rankings. Each version runs in isolation so modules never
+leak across targets.
 
 ## Quick example
 
@@ -32,7 +26,7 @@ untouched.
 Requires Lua >= 5.1.
 
 ```sh
-luarocks install https://raw.githubusercontent.com/jeffzi/luapit/main/luapit-dev-1.rockspec
+luarocks install luapit
 ```
 
 Or from a local clone:
@@ -67,8 +61,7 @@ luapit ref <targets...> [options]
 
 ### Target specifiers
 
-A target tells LuaPit where to find a version of the library to benchmark. The general
-format is:
+A target tells LuaPit where to find a version of the library to benchmark:
 
 ```text
 [alias=][repo]#ref
@@ -83,7 +76,7 @@ format is:
 | Existing local directory | `/path/to/lib` or `./lib`           | `lib`          |
 | Bare dot (working tree)  | `.`                                 | `working-tree` |
 
-Aliases disambiguate targets that would otherwise share a display name. The bare `.`
+Use aliases when two targets would otherwise share a display name. The bare `.`
 resolves to the git repository root, or the current directory if not inside a git repo.
 
 Remote targets use a shallow clone when possible (branches and tags). Commit hashes fall
@@ -92,7 +85,7 @@ back to a full clone. LuaPit removes all temporary clones when the run finishes.
 ### Prepare hook
 
 `--prepare` runs a shell command inside each cloned target directory before benchmarking
-starts. This is useful for projects that compile to Lua (TypeScript-to-Lua, Fennel,
+starts. This is useful for compile-to-Lua projects (TypeScript-to-Lua, Fennel,
 MoonScript, Teal) where the repository contains source files but no `.lua` output.
 
 ```sh
@@ -104,14 +97,13 @@ The command runs only in cloned targets (those created from `repo#ref` specifier
 tree (`.`) and local directory targets are used as-is.
 
 If the command fails for a target, LuaPit prints a warning, removes that target, and
-continues with the remaining targets. Output from the command streams directly to the
-terminal so build errors are visible.
+continues with the rest.
 
 ### Custom Lua path
 
 By default, LuaPit prepends each target's root directory to `package.path`. If your
-project's Lua files live in a subdirectory (common with compile-to-Lua toolchains),
-use `--lua-path` to tell LuaPit where to look instead.
+Lua files live in a subdirectory (common with compile-to-Lua toolchains),
+use `--lua-path` to override.
 
 ```sh
 # Transpiled Lua output lives in lua/ within each target
@@ -126,8 +118,8 @@ subdirectory, pass both:
 luapit ref .#main -b bench/ --lua-path . --lua-path lua
 ```
 
-Each path is relative to the target directory, so multi-ref comparisons work correctly
-— each cloned ref resolves `require` calls against its own copy of the subdirectory.
+Each path is relative to the target directory, so multi-ref comparisons resolve
+`require` calls against each target's own copy.
 
 ### Benchmark files
 
@@ -177,11 +169,12 @@ Each spec is a LuaMark spec table. Beyond `fn`, you can use:
   When set, all ratios in the group are computed relative to this spec's median. Without a
   baseline, ratios are relative to the fastest spec.
 
-**Target isolation.** For each target, LuaPit prepends the target's directory to
-`package.path` before loading the benchmark (or the subdirectories specified by
-`--lua-path`). When you write `require("mylib")`, it resolves against that target's
-code. `package.loaded` is restored between targets so modules do not leak across
-versions.
+### Target isolation
+
+For each target, LuaPit prepends the target's directory (or `--lua-path` subdirectories)
+to `package.path` before loading the benchmark. When you write `require("mylib")`, it
+resolves against that target's code. `package.loaded` is restored between targets so
+modules never leak across versions.
 
 ### Filtering benchmarks
 
