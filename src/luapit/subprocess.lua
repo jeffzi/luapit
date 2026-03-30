@@ -98,7 +98,9 @@ function M.append_opts_lines(parts, opts, indent)
    if opts.rounds ~= nil then
       parts[#parts + 1] = string.format("%sopts.rounds = %d", indent, opts.rounds)
    end
-   if opts.params == nil then return end
+   if opts.params == nil then
+      return
+   end
    parts[#parts + 1] = indent .. "opts.params = {"
    local names = {}
    for name in pairs(opts.params) do

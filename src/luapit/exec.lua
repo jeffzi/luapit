@@ -52,10 +52,14 @@ end
 --- @return boolean ok True if the process exited with status 0.
 local function check_exit(reason, status)
    if reason == "killed" or reason == "signal" then
-      if status == SIGINT then raise_interrupted() end
+      if status == SIGINT then
+         raise_interrupted()
+      end
       return false
    end
-   if status == SIGINT_EXIT then raise_interrupted() end
+   if status == SIGINT_EXIT then
+      raise_interrupted()
+   end
    return status == 0
 end
 
