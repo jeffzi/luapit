@@ -15,6 +15,6 @@ command -v luapit >/dev/null || {
 }
 
 printf "Running Love2D integration test...\n"
-luapit ref . -R love -b tests/engines/fixtures/ -t
+luapit . -R love -b tests/engines/fixtures/ -t
 
 printf "PASS: Love2D integration test succeeded\n"

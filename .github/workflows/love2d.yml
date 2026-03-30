@@ -39,4 +39,4 @@ jobs:
 
       - name: Run Love2D integration test
         timeout-minutes: 5
-        run: luapit ref . -R love -b tests/engines/fixtures/ -t
+        run: luapit . -R love -b tests/engines/fixtures/ -t

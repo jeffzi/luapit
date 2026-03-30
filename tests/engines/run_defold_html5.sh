@@ -37,6 +37,6 @@ command -v luapit-html5-harness >/dev/null || {
 }
 
 printf "Running Defold HTML5 integration test...\n"
-luapit ref . -R defold-html5 -b tests/engines/fixtures/ -t
+luapit . -R defold-html5 -b tests/engines/fixtures/ -t
 
 printf "PASS: Defold HTML5 integration test succeeded\n"

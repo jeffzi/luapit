@@ -27,6 +27,6 @@ command -v luapit >/dev/null || {
 }
 
 printf "Running Defold integration test...\n"
-luapit ref . -R defold -b tests/engines/fixtures/ -t
+luapit . -R defold -b tests/engines/fixtures/ -t
 
 printf "PASS: Defold integration test succeeded\n"
