@@ -7,10 +7,9 @@
 
 Pit Lua library versions against each other.
 
-LuaPit runs [LuaMark](https://github.com/jeffzi/luamark) benchmarks across git refs,
-tags, branches, or local directories and prints a comparison table with median times,
-confidence intervals, and rankings. Each version runs in isolation so modules never
-leak across targets.
+LuaPit runs [LuaMark](https://github.com/jeffzi/luamark) benchmarks across git refs, tags,
+branches, or local directories and prints a comparison table with median times, confidence
+intervals, and rankings. Each version runs in isolation so modules never leak across targets.
 
 ## Quick example
 
@@ -18,9 +17,8 @@ leak across targets.
 luapit ref .#main .#feature -b benchmarks/
 ```
 
-This compares the library at the `main` and `feature` git refs, using every `*_bench.lua`
-file found under `benchmarks/`. Each target gets a temporary clone; the originals are
-untouched.
+This compares the library at the `main` and `feature` git refs, using every `*_bench.lua` file
+found under `benchmarks/`. Each target gets a temporary clone; the originals are untouched.
 
 ## Installation
 
@@ -77,34 +75,33 @@ A target tells LuaPit where to find a version of the library to benchmark:
 | Existing local directory | `/path/to/lib` or `./lib`           | `lib`          |
 | Bare dot (working tree)  | `.`                                 | `working-tree` |
 
-Use aliases when two targets would otherwise share a display name. The bare `.`
-resolves to the git repository root, or the current directory if not inside a git repo.
+Use aliases when two targets would otherwise share a display name. The bare `.` resolves to the
+git repository root, or the current directory if not inside a git repo.
 
-Remote targets use a shallow clone when possible (branches and tags). Commit hashes fall
-back to a full clone. LuaPit removes all temporary clones when the run finishes.
+Remote targets use a shallow clone when possible (branches and tags). Commit hashes fall back to
+a full clone. LuaPit removes all temporary clones when the run finishes.
 
 ### Prepare hook
 
-`--prepare` runs a shell command inside each cloned target directory before benchmarking
-starts. This is useful for compile-to-Lua projects (TypeScript-to-Lua, Fennel,
-MoonScript, Teal) where the repository contains source files but no `.lua` output.
+`--prepare` runs a shell command inside each cloned target directory before benchmarking starts.
+This is useful for compile-to-Lua projects (TypeScript-to-Lua, Fennel, MoonScript, Teal) where
+the repository contains source files but no `.lua` output.
 
 ```sh
 luapit ref .#main .#feature -b benchmarks/ \
    --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
 ```
 
-The command runs only in cloned targets (those created from `repo#ref` specifiers). Working
-tree (`.`) and local directory targets are used as-is.
+The command runs only in cloned targets (those created from `repo#ref` specifiers). Working tree
+(`.`) and local directory targets are used as-is.
 
-If the command fails for a target, LuaPit prints a warning, removes that target, and
-continues with the rest.
+If the command fails for a target, LuaPit prints a warning, removes that target, and continues
+with the rest.
 
 ### Custom Lua path
 
-By default, LuaPit prepends each target's root directory to `package.path`. If your
-Lua files live in a subdirectory (common with compile-to-Lua toolchains),
-use `--lua-path` to override.
+By default, LuaPit prepends each target's root directory to `package.path`. If your Lua files
+live in a subdirectory (common with compile-to-Lua toolchains), use `--lua-path` to override.
 
 ```sh
 # Transpiled Lua output lives in lua/ within each target
@@ -112,15 +109,15 @@ luapit ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
    --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
 ```
 
-`--lua-path` replaces the default root entry. To include both the root and a
-subdirectory, pass both:
+`--lua-path` replaces the default root entry. To include both the root and a subdirectory, pass
+both:
 
 ```sh
 luapit ref .#main -b bench/ --lua-path . --lua-path lua
 ```
 
-Each path is relative to the target directory, so multi-ref comparisons resolve
-`require` calls against each target's own copy.
+Each path is relative to the target directory, so multi-ref comparisons resolve `require` calls
+against each target's own copy.
 
 ### Benchmark files
 
@@ -162,25 +159,25 @@ return {
 
 Each spec is a LuaMark spec table. Beyond `fn`, you can use:
 
-- `before` — called once before timing starts; its return value is passed to `fn` as the
-  first argument.
-- `after` — called once after timing finishes; receives `(ctx, params)` where `ctx` is the
-  value returned by `before`.
-- `baseline` — set to `true` to mark this spec as the reference for ratio calculations.
-  When set, all ratios in the group are computed relative to this spec's median. Without a
-  baseline, ratios are relative to the fastest spec.
+- `before` — called once before timing starts; its return value is passed to `fn` as the first
+  argument.
+- `after` — called once after timing finishes; receives `(ctx, params)` where `ctx` is the value
+  returned by `before`.
+- `baseline` — set to `true` to mark this spec as the reference for ratio calculations. When set,
+  all ratios in the group are computed relative to this spec's median. Without a baseline, ratios
+  are relative to the fastest spec.
 
 ### Target isolation
 
-For each target, LuaPit prepends the target's directory (or `--lua-path` subdirectories)
-to `package.path` before loading the benchmark. When you write `require("mylib")`, it
-resolves against that target's code. `package.loaded` is restored between targets so
-modules never leak across versions.
+For each target, LuaPit prepends the target's directory (or `--lua-path` subdirectories) to
+`package.path` before loading the benchmark. When you write `require("mylib")`, it resolves
+against that target's code. `package.loaded` is restored between targets so modules never leak
+across versions.
 
 ### Filtering benchmarks
 
-`--filter` accepts Lua patterns and matches against the benchmark ID. The ID is the
-relative file path (without the `_bench.lua` suffix), plus `::spec_name` for named-specs.
+`--filter` accepts Lua patterns and matches against the benchmark ID. The ID is the relative file
+path (without the `_bench.lua` suffix), plus `::spec_name` for named-specs.
 
 Multiple filters use OR logic: a benchmark runs if it matches any pattern.
 
@@ -191,11 +188,10 @@ luapit ref .#main .#dev -b bench/ --filter sort --filter insert
 
 ### Parameters
 
-`-p NAME:VALUE` forwards parameters to LuaMark. Values are auto-coerced: numeric strings
-become numbers, `true`/`false` become booleans, and everything else stays a string.
+`-p NAME:VALUE` forwards parameters to LuaMark. Values are auto-coerced: numeric strings become
+numbers, `true`/`false` become booleans, and everything else stays a string.
 
-Repeat `-p` with the same name to pass multiple values, which LuaMark receives as an
-array:
+Repeat `-p` with the same name to pass multiple values, which LuaMark receives as an array:
 
 ```sh
 luapit ref .#main .#dev -b bench/ -p size:100 -p size:10000
@@ -203,9 +199,9 @@ luapit ref .#main .#dev -b bench/ -p size:100 -p size:10000
 
 ### Runtimes
 
-Benchmarks always run in a subprocess. Without `-R`, LuaPit auto-detects the current
-Lua interpreter. With `-R`, it uses the specified runtime — either a name resolved from
-PATH or an absolute path.
+Benchmarks always run in a subprocess. Without `-R`, LuaPit auto-detects the current Lua
+interpreter. With `-R`, it uses the specified runtime — either a name resolved from PATH or an
+absolute path.
 
 | Runtime          | `-R` value     | Binary resolved     | Notes                         |
 | ---------------- | -------------- | ------------------- | ----------------------------- |
@@ -217,20 +213,20 @@ PATH or an absolute path.
 
 ### Game engine runtimes
 
-These runtimes scaffold a temporary engine project, copy your benchmarks and dependencies
-into it, and run the engine in headless mode.
+These runtimes scaffold a temporary engine project, copy your benchmarks and dependencies into
+it, and run the engine in headless mode.
 
 **Love2D** (`-R love`)
 
-Requires `love` on PATH. LuaPit creates a temporary Love2D project with graphics,
-audio, and input modules disabled and runs benchmarks through `love.load()`. Use this to
-benchmark code that depends on Love2D APIs such as `love.math`.
+Requires `love` on PATH. LuaPit creates a temporary Love2D project with graphics, audio, and
+input modules disabled and runs benchmarks through `love.load()`. Use this to benchmark code that
+depends on Love2D APIs such as `love.math`.
 
 **Defold** (`-R defold`)
 
-Requires `dmengine_headless` and `java` on PATH, plus `bob.jar` (either set the `BOB`
-environment variable to the jar path or place it on PATH). LuaPit scaffolds a minimal
-Defold project, builds it with bob.jar, and launches the headless engine.
+Requires `dmengine_headless` and `java` on PATH, plus `bob.jar` (either set the `BOB` environment
+variable to the jar path or place it on PATH). LuaPit scaffolds a minimal Defold project, builds
+it with bob.jar, and launches the headless engine.
 
 **Defold HTML5** (`-R defold-html5`)
 
@@ -240,8 +236,8 @@ Same prerequisites as Defold, plus [Node.js](https://nodejs.org/) and Playwright
 npx playwright install chromium
 ```
 
-Builds for the `js-web` platform and runs benchmarks in headless Chromium via a
-Playwright harness.
+Builds for the `js-web` platform and runs benchmarks in headless Chromium via a Playwright
+harness.
 
 ### JSON output
 

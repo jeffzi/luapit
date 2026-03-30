@@ -11,24 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `--lua-path` option to add subdirectories within each target to
-  `package.path` (repeatable), for projects where Lua files live under
-  a subdirectory (e.g., `--lua-path lua`)
-- `--prepare` hook to run a shell command in each cloned target directory
-  before benchmarking (e.g., compile TypeScript-to-Lua or Fennel sources)
-- Love2D runtime (`-R love`): runs benchmarks in a headless Love2D
-  project for code that depends on Love2D APIs
-- Defold runtime (`-R defold`): builds a minimal Defold project and
-  runs benchmarks via the headless engine
-- Defold HTML5 runtime (`-R defold-html5`): builds for the `js-web`
-  platform and runs benchmarks in headless Chromium via Playwright
+- `--lua-path` option to add subdirectories within each target to `package.path` (repeatable),
+  for projects where Lua files live under a subdirectory (e.g., `--lua-path lua`)
+- `--prepare` hook to run a shell command in each cloned target directory before benchmarking
+  (e.g., compile TypeScript-to-Lua or Fennel sources)
+- Love2D runtime (`-R love`): runs benchmarks in a headless Love2D project for code that depends
+  on Love2D APIs
+- Defold runtime (`-R defold`): builds a minimal Defold project and runs benchmarks via the
+  headless engine
+- Defold HTML5 runtime (`-R defold-html5`): builds for the `js-web` platform and runs benchmarks
+  in headless Chromium via Playwright
 - Windows support: run benchmarks on Windows
 - Per-target status lines printed as each benchmark completes
 
 ### Changed
 
-- Project renamed from LuaBench to **LuaPit** — package, module paths,
-  CLI binary, and repository URL all updated
+- Project renamed from LuaBench to **LuaPit** — package, module paths, CLI binary, and repository
+  URL all updated
 
 ### Removed
 
@@ -36,21 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Ctrl-C during a benchmark run now exits immediately instead of being
-  ignored
-- Incomplete target spec (e.g., `#sha`) now shows a helpful error with
-  the correct format instead of a generic message
-- Malformed benchmark specs (named specs without an `fn` function)
-  now warn and skip instead of exiting with an error
+- Ctrl-C during a benchmark run now exits immediately instead of being ignored
+- Incomplete target spec (e.g., `#sha`) now shows a helpful error with the correct format instead
+  of a generic message
+- Malformed benchmark specs (named specs without an `fn` function) now warn and skip instead of
+  exiting with an error
 
 ## [0.4.0] - 2026-03-21
 
 ### Added
 
-- Benchmark filtering via `--filter` with Lua pattern matching; pass
-  multiple `--filter` flags to match any pattern
-- User-defined parameters via `-p name:value` (number, boolean, or
-  string); repeatable for multiple values per name
+- Benchmark filtering via `--filter` with Lua pattern matching; pass multiple `--filter` flags to
+  match any pattern
+- User-defined parameters via `-p name:value` (number, boolean, or string); repeatable for multiple
+  values per name
 - Test mode via `-t` for quick smoke testing (runs 1 round per benchmark)
 - Runtime selection via `-R` to run benchmarks under a different Lua interpreter
 
@@ -59,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - JSON export via `-o results.json` including version, timestamp, targets, and results
-- Progress bar showing benchmark progress with ETA, hidden automatically when output is not a terminal
+- Progress bar showing benchmark progress with ETA, hidden automatically when output is not a
+  terminal
 - Benchmark results returned as structured data for use in scripts and CI
 
 ### Changed
@@ -94,8 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Benchmark file discovery with recursive directory scanning
 - Single-benchmark and multi-benchmark file formats
-- Target isolation — each version uses its own modules, preventing
-  cross-version dependency leakage
+- Target isolation — each version uses its own modules, preventing cross-version dependency leakage
 - CLI entrypoint with `ref` subcommand for comparing library versions
 - Support for benchmark lifecycle hooks (`before`, `after`, `baseline`)
 
