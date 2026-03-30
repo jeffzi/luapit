@@ -14,7 +14,7 @@ intervals, and rankings. Each version runs in isolation so modules never leak ac
 ## Quick example
 
 ```sh
-luapit ref .#main .#feature -b benchmarks/
+luapit .#main .#feature -b benchmarks/
 ```
 
 This compares the library at the `main` and `feature` git refs, using every `*_bench.lua` file
@@ -38,25 +38,21 @@ LuaRocks pulls in the dependencies automatically.
 
 ## Usage
 
-LuaPit provides one command: `ref`.
-
-### The `ref` command
-
 ```text
-luapit ref <targets...> [options]
+luapit <targets...> [options]
 ```
 
-| Option                   | Description                                                            | Default                 |
-| ------------------------ | ---------------------------------------------------------------------- | ----------------------- |
-| `<targets>`              | One or more target specifiers (positional, required).                  |                         |
-| `-b, --bench <path>`     | Benchmark files or directories (repeatable).                           | `.` (current directory) |
-| `-R, --runtime <name>`   | Lua runtime to run benchmarks under (name or path).                    | auto-detected           |
-| `-o, --output <path>`    | Write results to a JSON file.                                          |                         |
-| `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test.           | off                     |
-| `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                              |                         |
-| `--filter <pattern>`     | Filter benchmarks by Lua pattern (repeatable, OR logic).               | none (run all)          |
-| `--prepare <cmd>`        | Shell command to run in each cloned target dir before benchmarking.    | none                    |
-| `--lua-path <subdir>`    | Subdirectory within each target to add to `package.path` (repeatable). | target root             |
+| Option                   | Description                                                            | Default        |
+| ------------------------ | ---------------------------------------------------------------------- | -------------- |
+| `<targets>`              | One or more target specifiers (positional, required).                  |                |
+| `-b, --bench <path>`     | Benchmark files or directories (repeatable).                           | `.`            |
+| `-R, --runtime <name>`   | Lua runtime to run benchmarks under (name or path).                    | auto-detected  |
+| `-o, --output <path>`    | Write results to a JSON file.                                          |                |
+| `-t, --test`             | Test mode: run 1 round per benchmark for a quick smoke test.           | off            |
+| `-p, --param NAME:VALUE` | Pass a parameter to LuaMark (repeatable).                              |                |
+| `--filter <pattern>`     | Filter benchmarks by Lua pattern (repeatable, OR logic).               | none (run all) |
+| `--prepare <cmd>`        | Shell command to run in each cloned target dir before benchmarking.    | none           |
+| `--lua-path <subdir>`    | Subdirectory within each target to add to `package.path` (repeatable). | target root    |
 
 ### Target specifiers
 
@@ -84,11 +80,11 @@ a full clone. LuaPit removes all temporary clones when the run finishes.
 ### Prepare hook
 
 `--prepare` runs a shell command inside each cloned target directory before benchmarking starts.
-This is useful for compile-to-Lua projects (TypeScript-to-Lua, Fennel, MoonScript, Teal) where
+Use `--prepare` for compile-to-Lua projects (TypeScript-to-Lua, Fennel, MoonScript, Teal) where
 the repository contains source files but no `.lua` output.
 
 ```sh
-luapit ref .#main .#feature -b benchmarks/ \
+luapit .#main .#feature -b benchmarks/ \
    --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
 ```
 
@@ -105,7 +101,7 @@ live in a subdirectory (common with compile-to-Lua toolchains), use `--lua-path`
 
 ```sh
 # Transpiled Lua output lives in lua/ within each target
-luapit ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
+luapit .#main .#feature -b lua/benchmarks/ --lua-path lua \
    --prepare "npm ci && npx tstl -p tsconfig.benchmarks.json"
 ```
 
@@ -113,7 +109,7 @@ luapit ref .#main .#feature -b lua/benchmarks/ --lua-path lua \
 both:
 
 ```sh
-luapit ref .#main -b bench/ --lua-path . --lua-path lua
+luapit .#main -b bench/ --lua-path . --lua-path lua
 ```
 
 Each path is relative to the target directory, so multi-ref comparisons resolve `require` calls
@@ -163,9 +159,9 @@ Each spec is a LuaMark spec table. Beyond `fn`, you can use:
   argument.
 - `after` — called once after timing finishes; receives `(ctx, params)` where `ctx` is the value
   returned by `before`.
-- `baseline` — set to `true` to mark this spec as the reference for ratio calculations. When set,
-  all ratios in the group are computed relative to this spec's median. Without a baseline, ratios
-  are relative to the fastest spec.
+- `baseline` — set to `true` to mark this spec as the reference for ratio calculations. All ratios
+  in the group are then computed relative to this spec's median. Without a baseline, ratios are
+  relative to the fastest spec.
 
 ### Target isolation
 
@@ -183,7 +179,7 @@ Multiple filters use OR logic: a benchmark runs if it matches any pattern.
 
 ```sh
 # Run only benchmarks whose ID contains "sort" or "insert"
-luapit ref .#main .#dev -b bench/ --filter sort --filter insert
+luapit .#main .#dev -b bench/ --filter sort --filter insert
 ```
 
 ### Parameters
@@ -194,7 +190,7 @@ numbers, `true`/`false` become booleans, and everything else stays a string.
 Repeat `-p` with the same name to pass multiple values, which LuaMark receives as an array:
 
 ```sh
-luapit ref .#main .#dev -b bench/ -p size:100 -p size:10000
+luapit .#main .#dev -b bench/ -p size:100 -p size:10000
 ```
 
 ### Runtimes
@@ -245,7 +241,7 @@ harness.
 
 ```json
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "timestamp": "2026-03-21T12:00:00Z",
   "targets": [
     { "name": "main", "spec": ".#main" },

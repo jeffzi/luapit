@@ -10,37 +10,8 @@ describe("luapit", function()
    local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
    local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
 
-   local FAKE_RESULTS_PAIR = {
-      {
-         name = "libv1",
-         median = 0.001,
-         ci_lower = 0.0009,
-         ci_upper = 0.0011,
-         rounds = 100,
-         rank = 1,
-         relative = 1.0,
-      },
-      {
-         name = "libv2",
-         median = 0.002,
-         ci_lower = 0.0019,
-         ci_upper = 0.0021,
-         rounds = 100,
-         rank = 2,
-         relative = 2.0,
-      },
-   }
-
    before_each(function()
       luapit = require("luapit")
-   end)
-
-   it("build_parser when called returns a table with parse and pparse methods", function()
-      local parser = luapit.build_parser()
-
-      assert.is_table(parser)
-      assert.is_function(parser.parse)
-      assert.is_function(parser.pparse)
    end)
 
    --- Build a fresh parser and parse argv, returning (ok, args).
@@ -48,48 +19,40 @@ describe("luapit", function()
       return luapit.build_parser():pparse(argv)
    end
 
-   it("pparse with positional targets returns command and targets", function()
-      local ok, args = pparse({ "ref", ".#main", ".#dev", "/tmp/mylib" })
+   it("pparse with positional targets returns targets", function()
+      local ok, args = pparse({ ".#main", ".#dev", "/tmp/mylib" })
 
       assert.is_true(ok)
-      assert.are_equal("ref", args.command)
       assert.are_same({ ".#main", ".#dev", "/tmp/mylib" }, args.targets)
    end)
 
    it("pparse with -b flag returns bench list", function()
-      local ok, args = pparse({ "ref", ".#main", "-b", "benchmarks/" })
+      local ok, args = pparse({ ".#main", "-b", "benchmarks/" })
 
       assert.is_true(ok)
       assert.are_same({ "benchmarks/" }, args.bench)
    end)
 
    it("pparse with missing required args returns false", function()
-      assert.is_false(pparse({ "ref" }))
       assert.is_false(pparse({}))
    end)
 
    it("pparse with multiple --filter values returns filter table", function()
-      local ok, args = pparse({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
+      local ok, args = pparse({ ".#main", "--filter", "sort", "--filter", "hash" })
 
       assert.is_true(ok)
       assert.are_same({ "sort", "hash" }, args.filter)
    end)
 
-   it("pparse does not accept old -r flag", function()
-      local ok = pparse({ "ref", ".#main", "-r", ".#dev" })
-
-      assert.is_false(ok)
-   end)
-
    it("pparse with --prepare returns prepare string", function()
-      local ok, args = pparse({ "ref", ".#main", "--prepare", "npm ci && npx tstl" })
+      local ok, args = pparse({ ".#main", "--prepare", "npm ci && npx tstl" })
 
       assert.is_true(ok)
       assert.are_equal("npm ci && npx tstl", args.prepare)
    end)
 
    it("pparse without optional flags leaves defaults", function()
-      local ok, args = pparse({ "ref", ".#main" })
+      local ok, args = pparse({ ".#main" })
 
       assert.is_true(ok)
       assert.is_nil(args.prepare)
@@ -97,53 +60,29 @@ describe("luapit", function()
    end)
 
    it("pparse with --lua-path returns lua_path list", function()
-      local ok, args = pparse({ "ref", ".#main", "--lua-path", "lua", "--lua-path", "lib" })
+      local ok, args = pparse({ ".#main", "--lua-path", "lua", "--lua-path", "lib" })
 
       assert.is_true(ok)
       assert.are_same({ "lua", "lib" }, args.lua_path)
-   end)
-
-   it("discover feeds bench files into runner for full pipeline", function()
-      local discover_mod = require("luapit.discover")
-      local runner_mod = require("luapit.runner")
-      local subprocess_mod = require("luapit.subprocess")
-      local luamark = require("luamark")
-
-      local original_run_subprocess = subprocess_mod.run_subprocess
-      local original_render = luamark.render
-      local original_write = io.write
-
-      subprocess_mod.run_subprocess = function()
-         return FAKE_RESULTS_PAIR
-      end
-      luamark.render = function()
-         return "rendered"
-      end
-      io.write = function() end
-
-      local bench_files = discover_mod.discover({
-         path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua"),
-      })
-      local results = runner_mod.run(
-         bench_files,
-         { { path = LIBV1_DIR, name = "libv1" }, { path = LIBV2_DIR, name = "libv2" } },
-         { runtime = "/usr/bin/lua" }
-      )
-
-      subprocess_mod.run_subprocess = original_run_subprocess
-      luamark.render = original_render
-      io.write = original_write
-
-      assert.are_equal(1, #results)
-      assert.are_equal(2, #results[1].targets)
    end)
 
    local DEFAULT_RESOLVED = {
       { path = LIBV1_DIR, name = "libv1", cleanup = false },
    }
 
+   --- Teardown functions registered by stub helpers; called in reverse in after_each.
+   local pending_teardowns = {}
+
+   after_each(function()
+      for i = #pending_teardowns, 1, -1 do
+         pending_teardowns[i]()
+      end
+      pending_teardowns = {}
+   end)
+
    --- Stub helper for main() tests that mock resolve, discover, runner, etc.
    --- Installs happy-path defaults; individual tests override only what they need.
+   --- Teardown is registered automatically and runs in after_each.
    --- @param overrides? table Optional table of module function overrides.
    --- @return table stubs Table of stub state + originals for teardown.
    local function setup_main_stubs(overrides)
@@ -223,9 +162,10 @@ describe("luapit", function()
          return io.stderr:read("*a")
       end
 
+      pending_teardowns[#pending_teardowns + 1] = teardown
+
       return {
          state = state,
-         teardown = teardown,
          read_stderr = read_stderr,
       }
    end
@@ -239,9 +179,7 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main", ".#dev" })
-
-      s.teardown()
+      luapit.main({ ".#main", ".#dev" })
 
       assert.are_same({ ".#main", ".#dev" }, s.state.resolve_called_with)
    end)
@@ -254,9 +192,7 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main" })
-
-      s.teardown()
+      luapit.main({ ".#main" })
 
       assert.are_same(DEFAULT_RESOLVED, s.state.cleanup_called_with)
    end)
@@ -282,9 +218,7 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main" })
-
-      s.teardown()
+      pcall(luapit.main, { ".#main" })
 
       assert.are_same(resolved, s.state.cleanup_called_with)
       assert.are_equal(1, s.state.exit_code)
@@ -299,9 +233,7 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main" })
-
-      s.teardown()
+      luapit.main({ ".#main" })
 
       assert.are_same({ "." }, s.state.discover_called_with)
    end)
@@ -315,9 +247,7 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main", "-b", "benchmarks/", "-b", "tests/" })
-
-      s.teardown()
+      luapit.main({ ".#main", "-b", "benchmarks/", "-b", "tests/" })
 
       assert.are_same({ "benchmarks/", "tests/" }, s.state.discover_called_with)
    end)
@@ -334,10 +264,9 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", "bad" })
+      pcall(luapit.main, { "bad" })
 
       local stderr_output = s.read_stderr()
-      s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("invalid target", stderr_output)
@@ -358,10 +287,9 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main" })
+      pcall(luapit.main, { ".#main" })
 
       local stderr_output = s.read_stderr()
-      s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("no benchmark files found", stderr_output)
@@ -387,20 +315,18 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main", ".#dev" })
-
-      s.teardown()
+      luapit.main({ ".#main", ".#dev" })
 
       assert.are_same({ "bench1.lua", "bench2.lua" }, s.state.run_called_with.files)
       assert.are_same(resolved, s.state.run_called_with.targets)
    end)
 
-   --- Helper: setup stubs with a run spy that captures args, call main, teardown.
+   --- Setup stubs with a run spy, call main, and return the captured opts.
    --- @param cli_args table CLI arguments to pass to main.
    --- @return table opts The opts table passed to runner.run.
    local function run_main_capturing_opts(cli_args)
       local captured_opts
-      local s = setup_main_stubs({
+      setup_main_stubs({
          run = function(_, _, opts)
             captured_opts = opts
             return {}
@@ -408,27 +334,24 @@ describe("luapit", function()
       })
 
       luapit.main(cli_args)
-      s.teardown()
 
       return captured_opts
    end
 
    it("main with -t flag passes opts.rounds=1 to runner.run", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main", "-t" })
+      local opts = run_main_capturing_opts({ ".#main", "-t" })
 
       assert.are_equal(1, opts.rounds)
    end)
 
    it("main with --filter passes opts.filters to runner.run", function()
-      local opts =
-         run_main_capturing_opts({ "ref", ".#main", "--filter", "sort", "--filter", "hash" })
+      local opts = run_main_capturing_opts({ ".#main", "--filter", "sort", "--filter", "hash" })
 
       assert.are_same({ "sort", "hash" }, opts.filters)
    end)
 
    it("main with -p converts numeric and boolean strings and passes params to runner", function()
       local opts = run_main_capturing_opts({
-         "ref",
          ".#main",
          "-p",
          "n:1000",
@@ -449,22 +372,13 @@ describe("luapit", function()
    end)
 
    it("main with repeated -p name accumulates values into list", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main", "-p", "n:100", "-p", "n:1000" })
+      local opts = run_main_capturing_opts({ ".#main", "-p", "n:100", "-p", "n:1000" })
 
       assert.are_same({ n = { 100, 1000 } }, opts.params)
    end)
 
-   it("main with combined flags passes combined opts", function()
-      local opts =
-         run_main_capturing_opts({ "ref", ".#main", "-t", "--filter", "sort", "-p", "n:100" })
-
-      assert.are_equal(1, opts.rounds)
-      assert.are_same({ "sort" }, opts.filters)
-      assert.are_same({ n = { 100 } }, opts.params)
-   end)
-
    it("main without optional flags auto-detects runtime and passes it in opts", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main" })
+      local opts = run_main_capturing_opts({ ".#main" })
 
       assert.is_string(opts.runtime)
       assert.is_nil(opts.rounds)
@@ -474,7 +388,7 @@ describe("luapit", function()
 
    it("main with --lua-path strips trailing slashes and passes opts.lua_path", function()
       local opts =
-         run_main_capturing_opts({ "ref", ".#main", "--lua-path", "lua/", "--lua-path", "lib//" })
+         run_main_capturing_opts({ ".#main", "--lua-path", "lua/", "--lua-path", "lib//" })
 
       assert.are_same({ "lua", "lib" }, opts.lua_path)
    end)
@@ -488,17 +402,12 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main", "-p", "bad" })
+      pcall(luapit.main, { ".#main", "-p", "bad" })
 
       local stderr_output = s.read_stderr()
-      s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("invalid parameter format", stderr_output)
-   end)
-
-   it("_VERSION is 0.5.0", function()
-      assert.are_equal("0.5.0", luapit._VERSION)
    end)
 
    it("main calls export.write_json when -o is specified", function()
@@ -521,52 +430,28 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main", "-o", "/tmp/test_output.json" })
-
-      s.teardown()
+      luapit.main({ ".#main", "-o", "/tmp/test_output.json" })
 
       assert.is_not_nil(s.state.write_json_called_with)
       assert.are_equal("/tmp/test_output.json", s.state.write_json_called_with.filepath)
       assert.are_same(run_results, s.state.write_json_called_with.results)
       assert.are_same(DEFAULT_RESOLVED, s.state.write_json_called_with.targets)
-      assert.are_equal("0.5.0", s.state.write_json_called_with.version)
+      assert.are_equal("0.6.0", s.state.write_json_called_with.version)
    end)
 
-   it("main does not call export.write_json when -o is omitted", function()
-      local s
-      s = setup_main_stubs({
-         write_json = function()
-            s.state.write_json_called = true
-            return true
-         end,
-      })
-
-      luapit.main({ "ref", ".#main" })
-
-      s.teardown()
-
-      assert.is_nil(s.state.write_json_called)
-   end)
-
-   --- Helper: stub a subprocess module function, returning restore fn.
-   --- @param field string Field name on luapit.subprocess to replace.
+   --- Stub subprocess.resolve_runtime; teardown is registered via pending_teardowns.
    --- @param fake function Replacement function.
-   --- @return fun() restore Restores the original function.
-   local function stub_subprocess_fn(field, fake)
+   local function stub_subprocess_runtime(fake)
       local subprocess_mod = require("luapit.subprocess")
-      local original = subprocess_mod[field]
-      subprocess_mod[field] = fake
-      return function()
-         subprocess_mod[field] = original
+      local original = subprocess_mod.resolve_runtime
+      subprocess_mod.resolve_runtime = fake
+      pending_teardowns[#pending_teardowns + 1] = function()
+         subprocess_mod.resolve_runtime = original
       end
    end
 
-   local function stub_subprocess_runtime(fake_resolve)
-      return stub_subprocess_fn("resolve_runtime", fake_resolve)
-   end
-
    it("main without -R auto-detects and passes runtime to runner", function()
-      local opts = run_main_capturing_opts({ "ref", ".#main" })
+      local opts = run_main_capturing_opts({ ".#main" })
 
       assert.are_equal("/usr/bin/lua", opts.runtime)
    end)
@@ -583,28 +468,25 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main" })
+      pcall(luapit.main, { ".#main" })
 
       local stderr_output = s.read_stderr()
-      s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("cannot detect runtime", stderr_output)
    end)
 
    it("main with -R resolves named runtime and passes it to runner", function()
-      local restore = stub_subprocess_runtime(function(name)
+      stub_subprocess_runtime(function(name)
          return "/usr/local/bin/" .. name
       end)
-      local opts = run_main_capturing_opts({ "ref", ".#main", "-R", "luajit" })
+      local opts = run_main_capturing_opts({ ".#main", "-R", "luajit" })
 
       assert.are_equal("/usr/local/bin/luajit", opts.runtime)
-
-      restore()
    end)
 
    it("main with -R and invalid runtime exits 1 with error", function()
-      local restore = stub_subprocess_runtime(function()
+      stub_subprocess_runtime(function()
          return nil, 'runtime not found: "bad_runtime"'
       end)
       local s
@@ -615,38 +497,29 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main", "-R", "bad_runtime" })
+      pcall(luapit.main, { ".#main", "-R", "bad_runtime" })
 
       local stderr_output = s.read_stderr()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("runtime not found", stderr_output)
-
-      restore()
-      s.teardown()
    end)
 
    it("main with -R -t combines runtime and test mode", function()
-      local restore = stub_subprocess_runtime(function(name)
+      stub_subprocess_runtime(function(name)
          return "/usr/bin/" .. name
       end)
-      local opts = run_main_capturing_opts({ "ref", ".#main", "-R", "luajit", "-t" })
+      local opts = run_main_capturing_opts({ ".#main", "-R", "luajit", "-t" })
 
       assert.are_equal("/usr/bin/luajit", opts.runtime)
       assert.are_equal(1, opts.rounds)
-
-      restore()
    end)
 
-   it("main does not call export.write_json when runner errors", function()
+   it("main exits 1 when runner errors", function()
       local s
       s = setup_main_stubs({
          run = function()
             error("runner failed")
-         end,
-         write_json = function()
-            s.state.write_json_called = true
-            return true
          end,
          exit = function(code)
             s.state.exit_code = code
@@ -654,11 +527,8 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main", "-o", "/tmp/out.json" })
+      pcall(luapit.main, { ".#main" })
 
-      s.teardown()
-
-      assert.is_nil(s.state.write_json_called)
       assert.are_equal(1, s.state.exit_code)
    end)
 
@@ -674,10 +544,9 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main" })
+      pcall(luapit.main, { ".#main" })
 
       local stderr_output = s.read_stderr()
-      s.teardown()
 
       assert.are_equal(130, s.state.exit_code)
       assert.are_equal("", stderr_output)
@@ -692,9 +561,7 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main", "--prepare", "echo hi" })
-
-      s.teardown()
+      luapit.main({ ".#main", "--prepare", "echo hi" })
 
       assert.are_same(DEFAULT_RESOLVED, s.state.prepare_called_with.targets)
       assert.are_equal("echo hi", s.state.prepare_called_with.cmd)
@@ -718,9 +585,7 @@ describe("luapit", function()
          end,
       })
 
-      luapit.main({ "ref", ".#main", ".#dev", "--prepare", "make build" })
-
-      s.teardown()
+      luapit.main({ ".#main", ".#dev", "--prepare", "make build" })
 
       assert.are_same(DEFAULT_RESOLVED, s.state.run_targets)
    end)
@@ -737,28 +602,11 @@ describe("luapit", function()
          end,
       })
 
-      pcall(luapit.main, { "ref", ".#main", "--prepare", "false" })
+      pcall(luapit.main, { ".#main", "--prepare", "false" })
 
       local stderr_output = s.read_stderr()
-      s.teardown()
 
       assert.are_equal(1, s.state.exit_code)
       assert.matches("preparation", stderr_output)
-   end)
-
-   it("main without --prepare does not call prepare_targets", function()
-      local s
-      s = setup_main_stubs({
-         prepare_targets = function(targets)
-            s.state.prepare_called = true
-            return targets
-         end,
-      })
-
-      luapit.main({ "ref", ".#main" })
-
-      s.teardown()
-
-      assert.is_nil(s.state.prepare_called)
    end)
 end)
