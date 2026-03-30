@@ -141,7 +141,6 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
       return nil, scaffold_err
    end
 
-   --- Clean up temporary directory.
    local function cleanup()
       pcall(dir.rmtree, tmpdir)
    end

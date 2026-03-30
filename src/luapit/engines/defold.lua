@@ -227,7 +227,6 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
    --- @cast result_path string
 
-   --- Clean up all temporary files.
    local function cleanup()
       pcall(dir.rmtree, tmpdir)
       pcall(os.remove, result_path)

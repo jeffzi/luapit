@@ -89,18 +89,17 @@ function M.read_json_results(result_path, cleanup, label)
    return results
 end
 
---- Serialize an opts table (rounds, params) as Lua source lines.
+--- Append Lua source lines declaring `local opts` for the given opts table.
+--- @param parts string[] Code-line accumulator (mutated in place).
 --- @param opts table Options for compare_time.
---- @return string block Lua source declaring `local opts`.
-local function build_opts_block(opts)
-   local lines = { "local opts = {}" }
+--- @param indent string Indentation prefix for each appended line.
+function M.append_opts_lines(parts, opts, indent)
+   parts[#parts + 1] = indent .. "local opts = {}"
    if opts.rounds ~= nil then
-      lines[#lines + 1] = string.format("opts.rounds = %d", opts.rounds)
+      parts[#parts + 1] = string.format("%sopts.rounds = %d", indent, opts.rounds)
    end
-   if opts.params == nil then
-      return table.concat(lines, "\n")
-   end
-   lines[#lines + 1] = "opts.params = {"
+   if opts.params == nil then return end
+   parts[#parts + 1] = indent .. "opts.params = {"
    local names = {}
    for name in pairs(opts.params) do
       names[#names + 1] = name
@@ -113,10 +112,10 @@ local function build_opts_block(opts)
          local v = values[j]
          vals[#vals + 1] = type(v) == "string" and string.format("%q", v) or tostring(v)
       end
-      lines[#lines + 1] = string.format("   [%q] = { %s },", names[i], table.concat(vals, ", "))
+      parts[#parts + 1] =
+         string.format("%s   [%q] = { %s },", indent, names[i], table.concat(vals, ", "))
    end
-   lines[#lines + 1] = "}"
-   return table.concat(lines, "\n")
+   parts[#parts + 1] = indent .. "}"
 end
 
 -- Template for the Lua script that runs in the subprocess.
@@ -172,13 +171,15 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
          string.format("   { path = %q, name = %q },", targets[i].path, targets[i].name)
    end
 
+   local opts_parts = {}
+   M.append_opts_lines(opts_parts, opts, "")
    return string.format(
       WRAPPER_TEMPLATE,
       table.concat(target_entries, "\n"),
       M.build_path_line(opts.lua_path, "   "),
       string.format("%q", bench_file),
       string.format("%q", spec_name),
-      build_opts_block(opts),
+      table.concat(opts_parts, "\n"),
       string.format("%q", result_path),
       string.format("%q", result_path)
    )
@@ -207,15 +208,12 @@ function M.run_subprocess(runtime_path, bench_file, targets, spec_name, opts)
    end
 
    local wrapper = generate_wrapper(bench_file, targets, spec_name, opts, result_path)
-
-   -- Write wrapper to temp file
    local ok, write_err = utils.writefile(wrapper_path, wrapper)
    if not ok then
       cleanup()
       return nil, "failed to create wrapper script: " .. tostring(write_err)
    end
 
-   -- Execute subprocess
    local cmd = quote_arg(runtime_path) .. " " .. quote_arg(wrapper_path)
    local stdout, stderr
    ok, stdout, stderr = exec.run(cmd)

@@ -10,7 +10,6 @@ local IS_WINDOWS = path.is_windows
 local quote_arg = utils.quote_arg
 local readfile = utils.readfile
 
---- Load luaposix modules conditionally on non-Windows platforms.
 --- @type boolean
 local posix_ok
 --- @type table|nil
@@ -19,7 +18,6 @@ local unistd
 local wait_mod
 --- @type table|nil
 local posix_mod
-
 --- @type table|nil
 local poll_mod
 
@@ -53,16 +51,12 @@ end
 --- @param status number|nil Signal number or exit code (nil-safe for os.execute narrowing).
 --- @return boolean ok True if the process exited with status 0.
 local function check_exit(reason, status)
-   if (reason == "killed" or reason == "signal") and status == SIGINT then
-      raise_interrupted()
+   if reason == "killed" or reason == "signal" then
+      if status == SIGINT then raise_interrupted() end
+      return false
    end
-   if reason == "exited" or reason == "exit" then
-      if status == SIGINT_EXIT then
-         raise_interrupted()
-      end
-      return status == 0
-   end
-   return false
+   if status == SIGINT_EXIT then raise_interrupted() end
+   return status == 0
 end
 
 --- Get the parent process ID via luaposix (POSIX only).
@@ -167,7 +161,6 @@ local function run_posix(cmd)
       unistd.dup2(stderr_w, unistd.STDERR_FILENO)
       unistd.close(stdout_w)
       unistd.close(stderr_w)
-      -- Use /bin/sh to interpret the command string
       unistd.exec("/bin/sh", { "-c", cmd })
       unistd._exit(127) -- exec failed
    end

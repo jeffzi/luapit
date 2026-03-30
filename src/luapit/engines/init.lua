@@ -51,17 +51,16 @@ end
 function M.copy_file(src, dst)
    local content, err = utils.readfile(src, true)
    if content == nil then
-      return false, "cannot read source: " .. src .. ": " .. tostring(err)
+      return false, string.format("cannot read source: %s: %s", src, tostring(err))
    end
    local ok, write_err = utils.writefile(dst, content, true)
    if not ok then
-      return false, "cannot write destination: " .. dst .. ": " .. tostring(write_err)
+      return false, string.format("cannot write destination: %s: %s", dst, tostring(write_err))
    end
    return true
 end
 
 --- Search PATH for a command and return its absolute path.
---- Delegates to subprocess.find_command.
 --- @param cmd string Command name to look up.
 --- @return string|nil path Absolute path if found, nil otherwise.
 function M.find_command(cmd)
@@ -76,7 +75,6 @@ end
 --- @param spec_name string Spec name to extract ("" for single-spec).
 --- @param opts table Options for compare_time (rounds, params).
 function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
-   -- Build targets table literal
    parts[#parts + 1] = "      local targets = {"
    for i = 1, #targets do
       parts[#parts + 1] =
@@ -85,7 +83,6 @@ function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
    parts[#parts + 1] = "      }"
    parts[#parts + 1] = ""
 
-   -- Iterate targets, load benchmark for each, extract spec
    parts[#parts + 1] = "      local funcs = {}"
    parts[#parts + 1] = "      for i = 1, #targets do"
    parts[#parts + 1] = "         local t = targets[i]"
@@ -104,38 +101,9 @@ function M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
    parts[#parts + 1] = "      end"
    parts[#parts + 1] = ""
 
-   -- Build opts table
-   parts[#parts + 1] = "      local opts = {}"
-   if opts.rounds ~= nil then
-      parts[#parts + 1] = string.format("      opts.rounds = %d", opts.rounds)
-   end
-   if opts.params ~= nil then
-      parts[#parts + 1] = "      opts.params = {"
-      local param_names = {}
-      for name in pairs(opts.params) do
-         param_names[#param_names + 1] = name
-      end
-      table.sort(param_names)
-      for i = 1, #param_names do
-         local name = param_names[i]
-         local values = opts.params[name]
-         local vals = {}
-         for j = 1, #values do
-            local v = values[j]
-            if type(v) == "string" then
-               vals[#vals + 1] = string.format("%q", v)
-            else
-               vals[#vals + 1] = tostring(v)
-            end
-         end
-         parts[#parts + 1] =
-            string.format("         [%q] = { %s },", name, table.concat(vals, ", "))
-      end
-      parts[#parts + 1] = "      }"
-   end
+   subprocess.append_opts_lines(parts, opts, "      ")
    parts[#parts + 1] = ""
 
-   -- Call compare_time
    parts[#parts + 1] = "      local results = luamark.compare_time(funcs, opts)"
 end
 
@@ -149,8 +117,6 @@ end
 --- @param result_path string Absolute path to write JSON results.
 function M.append_wrapper_body(parts, bench_file, targets, spec_name, opts, result_path)
    M.append_benchmark_body(parts, bench_file, targets, spec_name, opts)
-
-   -- Write results to file
    parts[#parts + 1] = string.format("      local f = io.open(%q, 'w')", result_path)
    parts[#parts + 1] = "      if not f then error('cannot open ' .. "
       .. string.format("%q", result_path)

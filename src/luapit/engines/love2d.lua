@@ -90,22 +90,20 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
       return nil, "failed to create temp directory: " .. tmpdir
    end
 
-   -- Copy luamark.lua
-   local cp_ok, cp_err = engines.copy_file(luamark_path, tmpdir .. "/luamark.lua")
-   if not cp_ok then
+   local copy_ok, copy_err = engines.copy_file(luamark_path, tmpdir .. "/luamark.lua")
+   if not copy_ok then
       dir.rmtree(tmpdir)
-      return nil, cp_err
+      return nil, copy_err
    end
 
-   cp_ok, cp_err = engines.copy_file(dkjson_path, tmpdir .. "/dkjson.lua")
-   if not cp_ok then
+   copy_ok, copy_err = engines.copy_file(dkjson_path, tmpdir .. "/dkjson.lua")
+   if not copy_ok then
       dir.rmtree(tmpdir)
-      return nil, cp_err
+      return nil, copy_err
    end
 
-   local write_err
-   ok, write_err = utils.writefile(tmpdir .. "/conf.lua", CONF_TEMPLATE)
-   if not ok then
+   local write_ok, write_err = utils.writefile(tmpdir .. "/conf.lua", CONF_TEMPLATE)
+   if not write_ok then
       dir.rmtree(tmpdir)
       return nil, "failed to write conf.lua: " .. tostring(write_err)
    end
@@ -115,8 +113,8 @@ local function scaffold_project(bench_file, targets, spec_name, opts)
    os.remove(result_base)
 
    local wrapper = generate_love_wrapper(bench_file, targets, spec_name, opts, result_path)
-   ok, write_err = utils.writefile(tmpdir .. "/main.lua", wrapper)
-   if not ok then
+   write_ok, write_err = utils.writefile(tmpdir .. "/main.lua", wrapper)
+   if not write_ok then
       dir.rmtree(tmpdir)
       return nil, "failed to write main.lua: " .. tostring(write_err)
    end
@@ -140,7 +138,6 @@ function M.run(runtime_path, bench_file, targets, spec_name, opts)
    end
    ---@cast result_path string
 
-   --- Clean up all temporary files.
    local function cleanup()
       pcall(dir.rmtree, tmpdir)
       pcall(os.remove, result_path)

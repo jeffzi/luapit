@@ -138,12 +138,8 @@ function M.main(argv)
 
          if args.runtime ~= nil then
             local engine_name = engines.detect(args.runtime)
-            local resolve_name
-            if engine_name ~= nil then
-               resolve_name = engines.runtime_cmd(engine_name)
-            else
-               resolve_name = args.runtime
-            end
+            local resolve_name = engine_name ~= nil and engines.runtime_cmd(engine_name)
+               or args.runtime
             local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
             if runtime_path == nil then
                bail(runtime_err)

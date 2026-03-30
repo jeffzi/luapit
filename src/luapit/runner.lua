@@ -119,7 +119,7 @@ local function run_with_output(id, run_fn, err_label)
       io.flush()
       error(r1, 0)
    end
-   if r1 then
+   if r1 ~= nil then
       io.write(luamark.render(r1) .. "\n")
    elseif type(r2) == "string" and r2:find("interrupted") then
       io.flush()
@@ -172,7 +172,7 @@ local function collect_spec_names(loaded)
    local seen = {}
    for j = 1, #loaded do
       for name in pairs(loaded[j].result) do
-         if not seen[name] then
+         if seen[name] == nil then
             seen[name] = true
             names[#names + 1] = name
          end
