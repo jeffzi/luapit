@@ -106,6 +106,8 @@ local function map_results(results)
 end
 
 local HEADER_PREFIX = string.char(0xe2, 0x96, 0x8c) -- U+258C ▌
+local SUBPROCESS_ERROR_LABEL = "subprocess error"
+local ENGINE_ERROR_LABEL = "engine error"
 
 --- Run a benchmark and print header + results.
 --- @param id string Benchmark identity string.
@@ -182,6 +184,23 @@ local function collect_spec_names(loaded)
    return names
 end
 
+--- Filter and return spec names that match the given filters.
+--- @param spec_names string[] All available spec names.
+--- @param filters string[]|nil Filter patterns (OR logic).
+--- @param rel_path string Relative path for building bench IDs.
+--- @return string[] filtered Spec names matching any filter.
+local function filter_spec_names(spec_names, filters, rel_path)
+   local filtered = {}
+   for i = 1, #spec_names do
+      local name = spec_names[i]
+      local bench_id = loader.bench_id(rel_path, name)
+      if matches_filter(bench_id, filters) then
+         filtered[#filtered + 1] = name
+      end
+   end
+   return filtered
+end
+
 --- Build a result entry for the output array.
 --- @param rel_path string Relative benchmark file path.
 --- @param spec_name string Spec name ("" for single-spec).
@@ -196,7 +215,7 @@ local function make_result_entry(rel_path, spec_name, results)
 end
 
 --- Keys from opts that should not be forwarded to compare_time / adapters.
-local INTERNAL_OPT_KEYS = { filters = true, runtime = true, engine_name = true }
+local INTERNAL_OPT_KEYS = { filters = true, runtime = true, engine_name = true, isolate = true }
 
 --- Build compare_opts by copying opts without internal-only keys.
 --- @param opts table Full options table.
@@ -211,6 +230,23 @@ local function build_compare_opts(opts)
    return compare_opts
 end
 
+--- Collect targets that have the given spec_name.
+--- @param loaded {result: table, path: string, name: string}[] Loaded target entries.
+--- @param spec_name string Spec name to match.
+--- @return {path: string, name: string}[] Targets with this spec.
+local function collect_spec_targets(loaded, spec_name)
+   local targets = {}
+   for j = 1, #loaded do
+      if loaded[j].result[spec_name] ~= nil then
+         targets[#targets + 1] = {
+            path = loaded[j].path,
+            name = loaded[j].name,
+         }
+      end
+   end
+   return targets
+end
+
 --- Run a single spec via subprocess or engine adapter.
 --- @param bench_id string Benchmark identity string.
 --- @param info table File info entry with bench_file, loaded, rel_path.
@@ -219,21 +255,13 @@ end
 --- @param compare_opts table Options for compare_time / adapters.
 --- @return table|nil entry Result entry, or nil if skipped.
 local function run_spec_subprocess(bench_id, info, spec_name, opts, compare_opts)
-   local spec_targets = {}
-   for j = 1, #info.loaded do
-      if info.loaded[j].result[spec_name] ~= nil then
-         spec_targets[#spec_targets + 1] = {
-            path = info.loaded[j].path,
-            name = info.loaded[j].name,
-         }
-      end
-   end
+   local spec_targets = collect_spec_targets(info.loaded, spec_name)
    if #spec_targets == 0 then
       return nil
    end
 
    local engine_name = opts.engine_name
-   local err_label = engine_name and "engine error" or "subprocess error"
+   local err_label = engine_name and ENGINE_ERROR_LABEL or SUBPROCESS_ERROR_LABEL
    local results = run_with_output(bench_id, function()
       if engine_name ~= nil then
          local adapter = engines.get_adapter(engine_name)
@@ -253,6 +281,21 @@ local function run_spec_subprocess(bench_id, info, spec_name, opts, compare_opts
    end
 end
 
+--- Collect functions from loaded targets matching the given spec_name.
+--- @param loaded {result: table, name: string}[] Loaded target entries.
+--- @param spec_name string Spec name to collect.
+--- @return table funcs Dict mapping target name to spec function, or empty dict if none.
+local function collect_target_funcs(loaded, spec_name)
+   local funcs = {}
+   for j = 1, #loaded do
+      local entry = loaded[j]
+      if entry.result[spec_name] ~= nil then
+         funcs[entry.name] = entry.result[spec_name]
+      end
+   end
+   return funcs
+end
+
 --- Run a single spec in-process via luamark.compare_time.
 --- @param bench_id string Benchmark identity string.
 --- @param info table File info entry with loaded, rel_path.
@@ -261,13 +304,7 @@ end
 --- @param compare_opts table Options for compare_time.
 --- @return table|nil entry Result entry, or nil if skipped.
 local function run_spec_inprocess(bench_id, info, spec_name, _, compare_opts)
-   local funcs = {}
-   for j = 1, #info.loaded do
-      local entry = info.loaded[j]
-      if entry.result[spec_name] ~= nil then
-         funcs[entry.name] = entry.result[spec_name]
-      end
-   end
+   local funcs = collect_target_funcs(info.loaded, spec_name)
    if not next(funcs) then
       return nil
    end
@@ -288,6 +325,69 @@ local function run_spec_inprocess(bench_id, info, spec_name, _, compare_opts)
    end
 end
 
+--- Compute ranking and ratios for isolated results.
+--- Each target's result is a single-element array from run_single_target.
+--- Collects all targets, sorts by median ascending, assigns ranks and ratios.
+--- @param target_results table[] Array of {name, median, ci_lower, ci_upper, rounds} from per-target runs.
+--- @return table[] results Annotated results with rank and relative fields.
+local function compute_isolated_ranking(target_results)
+   -- Sort by median ascending (fastest first)
+   table.sort(target_results, function(a, b)
+      return a.median < b.median
+   end)
+
+   -- Assign ranks and compute ratios
+   local fastest_median = target_results[1].median
+   for i = 1, #target_results do
+      target_results[i].rank = i
+      target_results[i].relative = target_results[i].median / fastest_median
+   end
+
+   return target_results
+end
+
+--- Run a single spec with each target isolated in its own subprocess.
+--- Calls run_single_target once per target, collects results, and computes ranking.
+--- @param bench_id string Benchmark identity string.
+--- @param info table File info entry with bench_file, loaded, rel_path.
+--- @param spec_name string Spec name to run.
+--- @param opts table Full options (runtime required).
+--- @param compare_opts table Options for compare_time / adapters.
+--- @return table|nil entry Result entry, or nil if skipped.
+local function run_spec_isolated(bench_id, info, spec_name, opts, compare_opts)
+   local spec_targets = collect_spec_targets(info.loaded, spec_name)
+   if #spec_targets == 0 then
+      return nil
+   end
+
+   local target_results = {}
+   for j = 1, #spec_targets do
+      local target = spec_targets[j]
+      local results = run_with_output(bench_id, function()
+         return subprocess.run_single_target(
+            opts.runtime,
+            info.bench_file,
+            target,
+            spec_name,
+            compare_opts
+         )
+      end, SUBPROCESS_ERROR_LABEL)
+
+      if results ~= nil and #results > 0 then
+         -- run_single_target returns a single-element array; extract the result
+         local result = results[1]
+         target_results[#target_results + 1] = result
+      end
+   end
+
+   if #target_results == 0 then
+      return nil
+   end
+
+   local ranked_results = compute_isolated_ranking(target_results)
+   return make_result_entry(info.rel_path, spec_name, ranked_results)
+end
+
 --- Run benchmarks across targets.
 --- @param bench_files string[] Absolute paths to benchmark files.
 --- @param targets {path: string, name: string}[] Resolved targets to benchmark against.
@@ -298,7 +398,14 @@ function M.run(bench_files, targets, opts)
    local filters = opts.filters
    local lua_paths = opts.lua_path
    local compare_opts = build_compare_opts(opts)
-   local run_spec = opts.runtime and run_spec_subprocess or run_spec_inprocess
+   local run_spec
+   if opts.isolate then
+      run_spec = run_spec_isolated
+   elseif opts.runtime then
+      run_spec = run_spec_subprocess
+   else
+      run_spec = run_spec_inprocess
+   end
 
    local all_results = {}
 
@@ -307,19 +414,19 @@ function M.run(bench_files, targets, opts)
       local bench_file = bench_files[i]
       local rel_path = path.relpath(bench_file)
       local loaded = load_targets(bench_file, targets, lua_paths)
+
       local spec_names = {}
       if #loaded > 0 then
          local all_names = collect_spec_names(loaded)
-         for si = 1, #all_names do
-            local name = all_names[si]
-            local bench_id = loader.bench_id(rel_path, name)
-            if matches_filter(bench_id, filters) then
-               spec_names[#spec_names + 1] = name
-            end
-         end
+         spec_names = filter_spec_names(all_names, filters, rel_path)
       end
-      file_info[i] =
-         { bench_file = bench_file, rel_path = rel_path, loaded = loaded, spec_names = spec_names }
+
+      file_info[i] = {
+         bench_file = bench_file,
+         rel_path = rel_path,
+         loaded = loaded,
+         spec_names = spec_names,
+      }
    end
 
    local loop_ok, loop_err = pcall(function()

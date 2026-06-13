@@ -42,13 +42,13 @@ function M.find_command(cmd)
    if not ok or stdout == nil then
       return nil
    end
-   -- where.exe returns multiple matches separated by \r\n; take the first line only.
-   -- Handles both POSIX (single line with \n) and Windows (\r\n multi-line output).
-   local trimmed = stdout:match("^([^\r\n]-)[%s]*\r?\n") or stdout:match("^([^\r\n]-)$")
-   if trimmed == nil or trimmed == "" then
+   -- Extract first line (where.exe may return multiple matches; POSIX returns one).
+   -- Handles both \n (POSIX) and \r\n (Windows) line endings.
+   local first_line = stdout:match("^([^\r\n]+)")
+   if first_line == nil or first_line == "" then
       return nil
    end
-   return trimmed
+   return stringx.strip(first_line)
 end
 
 --- Resolve a runtime name or path to an absolute path.
@@ -89,6 +89,13 @@ function M.read_json_results(result_path, cleanup, label)
    return results
 end
 
+--- Format a parameter value as a Lua literal string.
+--- @param v any Parameter value.
+--- @return string formatted Lua literal representation.
+local function format_param_value(v)
+   return type(v) == "string" and string.format("%q", v) or tostring(v)
+end
+
 --- Append Lua source lines declaring `local opts` for the given opts table.
 --- @param parts string[] Code-line accumulator (mutated in place).
 --- @param opts table Options for compare_time.
@@ -101,21 +108,22 @@ function M.append_opts_lines(parts, opts, indent)
    if opts.params == nil then
       return
    end
+
    parts[#parts + 1] = indent .. "opts.params = {"
    local names = {}
    for name in pairs(opts.params) do
       names[#names + 1] = name
    end
    table.sort(names)
+
    for i = 1, #names do
       local values = opts.params[names[i]]
-      local vals = {}
+      local formatted_vals = {}
       for j = 1, #values do
-         local v = values[j]
-         vals[#vals + 1] = type(v) == "string" and string.format("%q", v) or tostring(v)
+         formatted_vals[#formatted_vals + 1] = format_param_value(values[j])
       end
       parts[#parts + 1] =
-         string.format("%s   [%q] = { %s },", indent, names[i], table.concat(vals, ", "))
+         string.format("%s   [%q] = { %s },", indent, names[i], table.concat(formatted_vals, ", "))
    end
    parts[#parts + 1] = indent .. "}"
 end
@@ -156,6 +164,13 @@ if not f then error('cannot open ' .. %s) end
 f:write(json.encode(results))
 f:close()]=]
 
+--- Format a target entry as a Lua table literal.
+--- @param target {path: string, name: string} Target directory info.
+--- @return string formatted Lua code for this target.
+local function format_target_entry(target)
+   return string.format("   { path = %q, name = %q },", target.path, target.name)
+end
+
 --- Generate a wrapper Lua script for subprocess execution.
 --- The wrapper loads a benchmark file under each target's package.path,
 --- builds a multi-target funcs table, calls compare_time once, and writes
@@ -169,8 +184,7 @@ f:close()]=]
 local function generate_wrapper(bench_file, targets, spec_name, opts, result_path)
    local target_entries = {}
    for i = 1, #targets do
-      target_entries[i] =
-         string.format("   { path = %q, name = %q },", targets[i].path, targets[i].name)
+      target_entries[i] = format_target_entry(targets[i])
    end
 
    local opts_parts = {}
@@ -187,6 +201,21 @@ local function generate_wrapper(bench_file, targets, spec_name, opts, result_pat
    )
 end
 
+--- Create temporary file paths for wrapper script and results.
+--- os.tmpname() creates actual files on POSIX; we remove the originals
+--- since we use suffixed paths (.lua and .json).
+--- @return string wrapper_path Path for the wrapper script.
+--- @return string result_path Path for the results JSON.
+local function create_temp_paths()
+   local wrapper_base = os.tmpname()
+   local result_base = os.tmpname()
+   local wrapper_path = wrapper_base .. ".lua"
+   local result_path = result_base .. ".json"
+   os.remove(wrapper_base)
+   os.remove(result_base)
+   return wrapper_path, result_path
+end
+
 --- Run a benchmark in a subprocess under the specified runtime.
 --- @param runtime_path string Absolute path to the Lua interpreter.
 --- @param bench_file string Absolute path to benchmark file.
@@ -196,13 +225,7 @@ end
 --- @return table[]|nil results Parsed luamark results, or nil on error.
 --- @return string|nil err Error message on failure.
 function M.run_subprocess(runtime_path, bench_file, targets, spec_name, opts)
-   local wrapper_base = os.tmpname()
-   local result_base = os.tmpname()
-   local wrapper_path = wrapper_base .. ".lua"
-   local result_path = result_base .. ".json"
-   -- os.tmpname() creates actual files on POSIX; remove the originals since we use suffixed paths.
-   os.remove(wrapper_base)
-   os.remove(result_base)
+   local wrapper_path, result_path = create_temp_paths()
 
    local function cleanup()
       pcall(os.remove, wrapper_path)
@@ -230,6 +253,20 @@ function M.run_subprocess(runtime_path, bench_file, targets, spec_name, opts)
    end
 
    return M.read_json_results(result_path, cleanup, "subprocess")
+end
+
+--- Run a benchmark for a single target in a subprocess under the specified runtime.
+--- Wraps the single target in a one-element array and calls run_subprocess.
+--- @param runtime_path string Absolute path to the Lua interpreter.
+--- @param bench_file string Absolute path to benchmark file.
+--- @param target {path: string, name: string} Target directory.
+--- @param spec_name string Spec name to extract ("" for single-spec).
+--- @param opts table Options for compare_time (rounds, params).
+--- @return table[]|nil results Parsed luamark results, or nil on error.
+--- @return string|nil err Error message on failure.
+function M.run_single_target(runtime_path, bench_file, target, spec_name, opts)
+   local targets = { target }
+   return M.run_subprocess(runtime_path, bench_file, targets, spec_name, opts)
 end
 
 --- Detect the current Lua interpreter and resolve to an absolute path.

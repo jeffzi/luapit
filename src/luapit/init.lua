@@ -17,6 +17,23 @@ local function die(msg)
    os.exit(1)
 end
 
+--- Coerce a string value to its typed representation (number, boolean, or string).
+--- @param value string String value to coerce.
+--- @return any Coerced value (number, boolean, or original string).
+local function coerce_value(value)
+   local num = tonumber(value)
+   if num ~= nil then
+      return num
+   end
+   if value == "true" then
+      return true
+   end
+   if value == "false" then
+      return false
+   end
+   return value
+end
+
 --- Parse raw parameter strings into a typed params table.
 --- @param raw_params string[] Array of "NAME:VALUE" strings.
 --- @return table<string, any[]>|nil params Parsed params, or nil on error.
@@ -29,18 +46,10 @@ local function parse_params(raw_params)
          return nil,
             string.format("invalid parameter format: %q (expected NAME:VALUE)", raw_params[i])
       end
-      local num = tonumber(value)
-      if num ~= nil then
-         value = num
-      elseif value == "true" then
-         value = true
-      elseif value == "false" then
-         value = false
-      end
       if params[name] == nil then
          params[name] = {}
       end
-      params[name][#params[name] + 1] = value
+      params[name][#params[name] + 1] = coerce_value(value)
    end
    return params
 end
@@ -75,6 +84,7 @@ function M.build_parser()
    parser
       :option("--lua-path", "Subdirectory within each target to add to package.path (repeatable).")
       :count("*")
+   parser:flag("--isolate", "Run each target in its own subprocess for heap isolation.")
 
    return parser
 end
@@ -140,29 +150,33 @@ function M.main(argv)
          end
          opts.lua_path = paths
       end
+      if args.isolate then
+         opts.isolate = true
+         if opts.params then
+            bail("--isolate cannot be combined with --param")
+         end
+      end
 
+      local runtime_path, runtime_err, engine_name
       if args.runtime ~= nil then
-         local engine_name = engines.detect(args.runtime)
-         local resolve_name
-         if engine_name ~= nil then
-            resolve_name = engines.runtime_cmd(engine_name)
-         else
-            resolve_name = args.runtime
+         engine_name = engines.detect(args.runtime)
+         if opts.isolate and engine_name ~= nil then
+            bail("--isolate cannot be combined with engine runtimes")
          end
-         local runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
-         if runtime_path == nil then
-            bail(runtime_err)
-         end
-         opts.runtime = runtime_path
-         if engine_name ~= nil then
-            opts.engine_name = engine_name
-         end
+         local resolve_name = engine_name ~= nil and engines.runtime_cmd(engine_name)
+            or args.runtime
+         runtime_path, runtime_err = subprocess.resolve_runtime(resolve_name)
       else
-         local runtime_path, runtime_err = subprocess.detect_runtime()
-         if runtime_path == nil then
-            bail(runtime_err)
-         end
-         opts.runtime = runtime_path
+         runtime_path, runtime_err = subprocess.detect_runtime()
+      end
+
+      if runtime_path == nil then
+         bail(runtime_err)
+      end
+
+      opts.runtime = runtime_path
+      if engine_name ~= nil then
+         opts.engine_name = engine_name
       end
 
       local run_result = runner.run(bench_files, targets, opts)

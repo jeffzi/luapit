@@ -133,6 +133,8 @@ describe("subprocess", function()
       { path = LIBV2_DIR, name = "libv2" },
    }
 
+   local HOOKS_BENCH = path.join(FIXTURE_DIR, "benchmarks", "hooks_bench.lua")
+
    it("run_subprocess with multiple targets returns results with expected fields", function()
       local runtime = require_lua_runtime()
 
@@ -166,11 +168,12 @@ describe("subprocess", function()
       assert.is_true(ok, "run_subprocess raised: " .. tostring(call_err))
       for _, tmp in ipairs(base_files) do
          local f = io.open(tmp, "r")
+         local file_exists = f ~= nil
          if f then
             f:close()
             os.remove(tmp)
          end
-         assert.is_nil(f, "orphan temp file was not removed: " .. tmp)
+         assert.is_false(file_exists, "orphan temp file was not removed: " .. tmp)
       end
    end)
 
@@ -184,6 +187,93 @@ describe("subprocess", function()
          "",
          {}
       )
+
+      assert.is_nil(results)
+      assert.is_string(err)
+      assert.matches("bench%.lua", err)
+   end)
+
+   -- run_single_target end-to-end tests
+
+   it("run_single_target with a valid target returns results with expected fields", function()
+      local runtime = require_lua_runtime()
+      local single_target = { path = LIBV1_DIR, name = "libv1" }
+
+      local results, err =
+         subprocess.run_single_target(runtime, SORT_BENCH, single_target, "", { rounds = 1 })
+
+      assert.is_nil(err)
+      assert.is_table(results)
+      assert.is_true(#results >= 1)
+      local r = results[1]
+      assert.is_string(r.name)
+      assert.is_number(r.median)
+      assert.is_number(r.rounds)
+   end)
+
+   it("run_single_target with a single target returns result with exactly one entry", function()
+      local runtime = require_lua_runtime()
+      local single_target = { path = LIBV1_DIR, name = "libv1" }
+
+      local results, err =
+         subprocess.run_single_target(runtime, SORT_BENCH, single_target, "", { rounds = 1 })
+
+      assert.is_nil(err)
+      assert.is_table(results)
+      assert.are_equal(1, #results)
+      assert.are_equal("libv1", results[1].name)
+   end)
+
+   it("run_single_target with a benchmark that has before/after hooks returns results", function()
+      local runtime = require_lua_runtime()
+      local single_target = { path = LIBV1_DIR, name = "libv1" }
+
+      local results, err = subprocess.run_single_target(runtime, HOOKS_BENCH, single_target, "", {
+         rounds = 1,
+      })
+
+      assert.is_nil(err)
+      assert.is_table(results)
+      assert.are_equal(1, #results)
+      assert.are_equal("libv1", results[1].name)
+   end)
+
+   it("run_single_target cleans up temporary files after execution", function()
+      local runtime = require_lua_runtime()
+      local single_target = { path = LIBV1_DIR, name = "libv1" }
+      local base_files = {}
+      local original_tmpname = os.tmpname
+      os.tmpname = function()
+         local name = original_tmpname()
+         table.insert(base_files, name)
+         return name
+      end
+
+      local ok, call_err =
+         pcall(subprocess.run_single_target, runtime, SORT_BENCH, single_target, "", {
+            rounds = 1,
+         })
+
+      os.tmpname = original_tmpname
+
+      assert.is_true(ok, "run_single_target raised: " .. tostring(call_err))
+      for _, tmp in ipairs(base_files) do
+         local f = io.open(tmp, "r")
+         local file_exists = f ~= nil
+         if f then
+            f:close()
+            os.remove(tmp)
+         end
+         assert.is_false(file_exists, "orphan temp file was not removed: " .. tmp)
+      end
+   end)
+
+   it("run_single_target returns nil and error for non-zero exit", function()
+      local runtime = require_lua_runtime()
+      local single_target = { path = "/tmp", name = "test" }
+
+      local results, err =
+         subprocess.run_single_target(runtime, "/nonexistent/bench.lua", single_target, "", {})
 
       assert.is_nil(results)
       assert.is_string(err)

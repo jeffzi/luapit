@@ -1,4 +1,4 @@
----@diagnostic disable: need-check-nil, duplicate-set-field
+---@diagnostic disable: need-check-nil, duplicate-set-field, different-requires
 
 local path = require("pl.path")
 
@@ -9,6 +9,7 @@ describe("luapit", function()
    local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
    local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
    local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
+   local LUAPIT_VERSION = "0.6.0"
 
    before_each(function()
       luapit = require("luapit")
@@ -170,6 +171,24 @@ describe("luapit", function()
       }
    end
 
+   --- Setup stubs with an exit spy, call main via pcall, and return exit code + stderr.
+   --- @param cli_args table CLI arguments to pass to main.
+   --- @param overrides table Stub overrides (exit is injected automatically).
+   --- @return integer exit_code
+   --- @return string stderr_output
+   local function run_main_expecting_exit(cli_args, overrides)
+      local exit_code
+      overrides.exit = function(code)
+         exit_code = code
+         error("EXIT")
+      end
+      local stubs = setup_main_stubs(overrides)
+
+      pcall(luapit.main, cli_args)
+
+      return exit_code, stubs.read_stderr()
+   end
+
    it("main calls resolve_targets with positional targets", function()
       local s
       s = setup_main_stubs({
@@ -253,47 +272,30 @@ describe("luapit", function()
    end)
 
    it("main exits 1 when resolve_targets fails", function()
-      local s
-      s = setup_main_stubs({
+      local code, stderr = run_main_expecting_exit({ "bad" }, {
          resolve_targets = function()
             return nil, "invalid target: bad"
          end,
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
       })
 
-      pcall(luapit.main, { "bad" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(1, s.state.exit_code)
-      assert.matches("invalid target", stderr_output)
+      assert.are_equal(1, code)
+      assert.matches("invalid target", stderr)
    end)
 
    it("main exits 1 when no benchmark files found", function()
-      local s
-      s = setup_main_stubs({
+      local cleanup_called_with
+      local code, stderr = run_main_expecting_exit({ ".#main" }, {
          cleanup = function(targets)
-            s.state.cleanup_called_with = targets
+            cleanup_called_with = targets
          end,
          discover = function()
             return {}
          end,
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
       })
 
-      pcall(luapit.main, { ".#main" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(1, s.state.exit_code)
-      assert.matches("no benchmark files found", stderr_output)
-      assert.are_same(DEFAULT_RESOLVED, s.state.cleanup_called_with)
+      assert.are_equal(1, code)
+      assert.matches("no benchmark files found", stderr)
+      assert.are_same(DEFAULT_RESOLVED, cleanup_called_with)
    end)
 
    it("main passes bench_files and resolved targets to runner.run", function()
@@ -338,17 +340,32 @@ describe("luapit", function()
       return captured_opts
    end
 
-   it("main with -t flag passes opts.rounds=1 to runner.run", function()
-      local opts = run_main_capturing_opts({ ".#main", "-t" })
+   for _, case in ipairs({
+      {
+         desc = "-t flag passes opts.rounds=1",
+         args = { ".#main", "-t" },
+         field = "rounds",
+         expected = 1,
+      },
+      {
+         desc = "--filter passes opts.filters",
+         args = { ".#main", "--filter", "sort", "--filter", "hash" },
+         field = "filters",
+         expected = { "sort", "hash" },
+      },
+      {
+         desc = "--lua-path strips trailing slashes and passes opts.lua_path",
+         args = { ".#main", "--lua-path", "lua/", "--lua-path", "lib//" },
+         field = "lua_path",
+         expected = { "lua", "lib" },
+      },
+   }) do
+      it("main with " .. case.desc, function()
+         local opts = run_main_capturing_opts(case.args)
 
-      assert.are_equal(1, opts.rounds)
-   end)
-
-   it("main with --filter passes opts.filters to runner.run", function()
-      local opts = run_main_capturing_opts({ ".#main", "--filter", "sort", "--filter", "hash" })
-
-      assert.are_same({ "sort", "hash" }, opts.filters)
-   end)
+         assert.are_same(case.expected, opts[case.field])
+      end)
+   end
 
    it("main with -p converts numeric and boolean strings and passes params to runner", function()
       local opts = run_main_capturing_opts({
@@ -386,28 +403,11 @@ describe("luapit", function()
       assert.is_nil(opts.params)
    end)
 
-   it("main with --lua-path strips trailing slashes and passes opts.lua_path", function()
-      local opts =
-         run_main_capturing_opts({ ".#main", "--lua-path", "lua/", "--lua-path", "lib//" })
-
-      assert.are_same({ "lua", "lib" }, opts.lua_path)
-   end)
-
    it("main with invalid -p format exits 1 with error", function()
-      local s
-      s = setup_main_stubs({
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
-      })
+      local code, stderr = run_main_expecting_exit({ ".#main", "-p", "bad" }, {})
 
-      pcall(luapit.main, { ".#main", "-p", "bad" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(1, s.state.exit_code)
-      assert.matches("invalid parameter format", stderr_output)
+      assert.are_equal(1, code)
+      assert.matches("invalid parameter format", stderr)
    end)
 
    it("main calls export.write_json when -o is specified", function()
@@ -436,7 +436,7 @@ describe("luapit", function()
       assert.are_equal("/tmp/test_output.json", s.state.write_json_called_with.filepath)
       assert.are_same(run_results, s.state.write_json_called_with.results)
       assert.are_same(DEFAULT_RESOLVED, s.state.write_json_called_with.targets)
-      assert.are_equal("0.6.0", s.state.write_json_called_with.version)
+      assert.are_equal(LUAPIT_VERSION, s.state.write_json_called_with.version)
    end)
 
    --- Stub subprocess.resolve_runtime; teardown is registered via pending_teardowns.
@@ -457,23 +457,14 @@ describe("luapit", function()
    end)
 
    it("main without -R exits 1 when runtime cannot be auto-detected", function()
-      local s
-      s = setup_main_stubs({
+      local code, stderr = run_main_expecting_exit({ ".#main" }, {
          detect_runtime = function()
             return nil, "cannot detect runtime: arg table is not available"
          end,
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
       })
 
-      pcall(luapit.main, { ".#main" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(1, s.state.exit_code)
-      assert.matches("cannot detect runtime", stderr_output)
+      assert.are_equal(1, code)
+      assert.matches("cannot detect runtime", stderr)
    end)
 
    it("main with -R resolves named runtime and passes it to runner", function()
@@ -489,20 +480,10 @@ describe("luapit", function()
       stub_subprocess_runtime(function()
          return nil, 'runtime not found: "bad_runtime"'
       end)
-      local s
-      s = setup_main_stubs({
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
-      })
+      local code, stderr = run_main_expecting_exit({ ".#main", "-R", "bad_runtime" }, {})
 
-      pcall(luapit.main, { ".#main", "-R", "bad_runtime" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(1, s.state.exit_code)
-      assert.matches("runtime not found", stderr_output)
+      assert.are_equal(1, code)
+      assert.matches("runtime not found", stderr)
    end)
 
    it("main with -R -t combines runtime and test mode", function()
@@ -516,40 +497,24 @@ describe("luapit", function()
    end)
 
    it("main exits 1 when runner errors", function()
-      local s
-      s = setup_main_stubs({
+      local code = run_main_expecting_exit({ ".#main" }, {
          run = function()
             error("runner failed")
          end,
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
       })
 
-      pcall(luapit.main, { ".#main" })
-
-      assert.are_equal(1, s.state.exit_code)
+      assert.are_equal(1, code)
    end)
 
    it("main when runner raises interrupt error exits 130 silently", function()
-      local s
-      s = setup_main_stubs({
+      local code, stderr = run_main_expecting_exit({ ".#main" }, {
          run = function()
             error("interrupted")
          end,
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
       })
 
-      pcall(luapit.main, { ".#main" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(130, s.state.exit_code)
-      assert.are_equal("", stderr_output)
+      assert.are_equal(130, code)
+      assert.are_equal("", stderr)
    end)
 
    it("main with --prepare calls prepare_targets with targets and command", function()
@@ -591,22 +556,13 @@ describe("luapit", function()
    end)
 
    it("main with --prepare exits 1 when all targets fail preparation", function()
-      local s
-      s = setup_main_stubs({
+      local code, stderr = run_main_expecting_exit({ ".#main", "--prepare", "false" }, {
          prepare_targets = function()
             return {}
          end,
-         exit = function(code)
-            s.state.exit_code = code
-            error("EXIT")
-         end,
       })
 
-      pcall(luapit.main, { ".#main", "--prepare", "false" })
-
-      local stderr_output = s.read_stderr()
-
-      assert.are_equal(1, s.state.exit_code)
-      assert.matches("preparation", stderr_output)
+      assert.are_equal(1, code)
+      assert.matches("preparation", stderr)
    end)
 end)

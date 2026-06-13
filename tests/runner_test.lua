@@ -248,10 +248,10 @@ describe("runner", function()
          error("deliberate load error")
       end
 
-      runner.run({ SORT_BENCH }, TARGETS_V1, RUNTIME_OPTS)
+      pcall(runner.run, { SORT_BENCH }, TARGETS_V1, RUNTIME_OPTS)
 
-      local stderr_output = read_stderr()
       loader.load_benchmark = original_load
+      local stderr_output = read_stderr()
       teardown()
 
       assert.matches("deliberate load error", stderr_output)
@@ -546,5 +546,196 @@ describe("runner", function()
       assert.is_not_nil(captured_opts)
       assert.is_nil(captured_opts.engine_name)
       assert.are_equal(1, captured_opts.rounds)
+   end)
+
+   --- Stub subprocess.run_single_target with results that vary by target name.
+   --- @param result_map table Mapping of target.name to result table.
+   --- @return fun() restore Restores the original function.
+   local function stub_isolate_results(result_map)
+      local subprocess_mod = require("luapit.subprocess")
+      local original = subprocess_mod.run_single_target
+      subprocess_mod.run_single_target = function(_, _, target, _, _)
+         return result_map[target.name]
+      end
+      return function()
+         subprocess_mod.run_single_target = original
+      end
+   end
+
+   --- Stub isolate results, run in isolate mode, teardown, and return results + stderr reader.
+   --- @param result_map table Mapping of target.name to result table.
+   --- @return table results, fun():string read_stderr
+   local function run_isolate(result_map)
+      local restore = stub_isolate_results(result_map)
+      local _, teardown, read_stderr = setup_run_stubs()
+      local results = runner.run(
+         { SORT_BENCH },
+         TARGETS_PAIR,
+         { runtime = RUNTIME, isolate = true }
+      )
+      teardown()
+      restore()
+      return results, read_stderr
+   end
+
+   --- Stub both run_single_target and run_subprocess for isolate spy tests.
+   --- @return table spy_state, fun() restore
+   local function stub_isolate_spies()
+      local subprocess_mod = require("luapit.subprocess")
+      local originals = {
+         run_single_target = subprocess_mod.run_single_target,
+         run_subprocess = subprocess_mod.run_subprocess,
+      }
+      local spy_state = { single_target_calls = {}, subprocess_calls = {} }
+
+      subprocess_mod.run_single_target = function(runtime, bench_file, target, spec_name, opts)
+         spy_state.single_target_calls[#spy_state.single_target_calls + 1] = {
+            runtime = runtime,
+            bench_file = bench_file,
+            target = target,
+            spec_name = spec_name,
+            opts = opts,
+         }
+         return { fake_result(target.name, 1, 1.0) }
+      end
+      subprocess_mod.run_subprocess = function()
+         spy_state.subprocess_calls[#spy_state.subprocess_calls + 1] = true
+         return FAKE_RESULTS_PAIR
+      end
+
+      return spy_state,
+         function()
+            subprocess_mod.run_single_target = originals.run_single_target
+            subprocess_mod.run_subprocess = originals.run_subprocess
+         end
+   end
+
+   it("run with opts.isolate=true calls run_single_target once per target", function()
+      local spy_state, restore_spies = stub_isolate_spies()
+
+      local _, teardown = setup_run_stubs()
+      runner.run({ SORT_BENCH }, TARGETS_PAIR, { runtime = RUNTIME, isolate = true })
+      teardown()
+      restore_spies()
+
+      assert.are_equal(2, #spy_state.single_target_calls)
+      assert.are_equal(LIBV1_DIR, spy_state.single_target_calls[1].target.path)
+      assert.are_equal("libv1", spy_state.single_target_calls[1].target.name)
+      assert.are_equal(LIBV2_DIR, spy_state.single_target_calls[2].target.path)
+      assert.are_equal("libv2", spy_state.single_target_calls[2].target.name)
+      assert.are_equal(0, #spy_state.subprocess_calls)
+   end)
+
+   local ISOLATE_TWO_TARGETS = {
+      libv1 = {
+         { name = "libv1", median = 0.001, ci_lower = 0.0009, ci_upper = 0.0011, rounds = 100 },
+      },
+      libv2 = {
+         { name = "libv2", median = 0.002, ci_lower = 0.0019, ci_upper = 0.0021, rounds = 100 },
+      },
+   }
+
+   it(
+      "run with opts.isolate=true computes correct ranking (1 for fastest, 2 for slower)",
+      function()
+         local results = run_isolate(ISOLATE_TWO_TARGETS)
+
+         assert.are_equal(1, #results)
+         local entry = results[1]
+         assert.are_equal(2, #entry.targets)
+         assert.are_equal(1, entry.targets[1].rank)
+         assert.are_equal(2, entry.targets[2].rank)
+      end
+   )
+
+   it(
+      "run with opts.isolate=true computes correct ratio (fastest=1.0, slower=median/fastest)",
+      function()
+         local results = run_isolate(ISOLATE_TWO_TARGETS)
+
+         local entry = results[1]
+         assert.are_equal(1.0, entry.targets[1].ratio)
+         assert.are_equal(2.0, entry.targets[2].ratio)
+      end
+   )
+
+   it("run with opts.isolate=true returns same result shape as normal mode", function()
+      local results = run_isolate({
+         libv1 = { fake_result("libv1", 1, 1.0) },
+         libv2 = { fake_result("libv2", 2, 2.0) },
+      })
+
+      assert.is_table(results)
+      assert.are_equal(1, #results)
+      local entry = results[1]
+      assert.is_string(entry.file)
+      assert.matches("sort", entry.file)
+      assert.is_string(entry.spec)
+      assert.is_table(entry.targets)
+      assert.are_equal(2, #entry.targets)
+
+      local t1 = entry.targets[1]
+      assert.is_string(t1.name)
+      assert.is_number(t1.median)
+      assert.is_number(t1.ci_lower)
+      assert.is_number(t1.ci_upper)
+      assert.is_number(t1.rounds)
+      assert.is_number(t1.rank)
+      assert.is_number(t1.ratio)
+      local t2 = entry.targets[2]
+      assert.is_string(t2.name)
+      assert.is_number(t2.median)
+      assert.is_number(t2.ci_lower)
+      assert.is_number(t2.ci_upper)
+      assert.is_number(t2.rounds)
+      assert.is_number(t2.rank)
+      assert.is_number(t2.ratio)
+   end)
+
+   it(
+      "run with opts.isolate=true when single_target call fails skips target and logs warning",
+      function()
+         local subprocess_mod = require("luapit.subprocess")
+         local original = subprocess_mod.run_single_target
+         local fail_map = {
+            libv1 = { nil, "target failed" },
+            libv2 = { fake_result("libv2", 1, 1.0) },
+         }
+         subprocess_mod.run_single_target = function(_, _, target, _, _)
+            local result = fail_map[target.name]
+            if result[2] then
+               return nil, result[2]
+            end
+            return result
+         end
+
+         local _, teardown, read_stderr = setup_run_stubs()
+         local results = runner.run(
+            { SORT_BENCH },
+            TARGETS_PAIR,
+            { runtime = RUNTIME, isolate = true }
+         )
+         local stderr_output = read_stderr()
+         teardown()
+         subprocess_mod.run_single_target = original
+
+         assert.are_equal(1, #results)
+         local entry = results[1]
+         assert.are_equal(1, #entry.targets)
+         assert.are_equal("libv2", entry.targets[1].name)
+         assert.matches("warning", stderr_output)
+      end
+   )
+
+   it("run does not forward isolate option to subprocess", function()
+      local spy_state, teardown = setup_run_stubs()
+
+      runner.run({ SORT_BENCH }, TARGETS_PAIR, { runtime = RUNTIME, rounds = 1, isolate = true })
+
+      teardown()
+
+      local opts = spy_state.subprocess_calls[1].opts
+      assert.are_equal(1, opts.rounds)
+      assert.is_nil(opts.isolate)
    end)
 end)
