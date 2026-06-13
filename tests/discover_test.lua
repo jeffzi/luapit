@@ -38,17 +38,24 @@ describe("discover", function()
       local result = discover({ FIXTURES_DIR })
 
       assert.is_true(#result >= 3)
-      for i = 1, #result do
-         assert.matches("_bench%.lua$", result[i])
+      local non_bench = {}
+      for _, p in ipairs(result) do
+         if not p:match("_bench%.lua$") then
+            non_bench[#non_bench + 1] = p
+         end
       end
+      assert.are_same({}, non_bench)
    end)
 
    it("discover returns results sorted alphabetically", function()
       local result = discover({ FIXTURES_DIR })
 
-      for i = 2, #result do
-         assert.is_true(result[i - 1] <= result[i])
+      local sorted = {}
+      for i = 1, #result do
+         sorted[i] = result[i]
       end
+      table.sort(sorted)
+      assert.are_same(sorted, result)
    end)
 
    it("discover with mixed files and directories returns all bench files", function()
