@@ -150,31 +150,6 @@ describe("init", function()
       assert.is_true(captured_opts.isolate)
    end)
 
-   it("main with --isolate and --param exits with error about incompatibility", function()
-      resolve.resolve_targets = function()
-         return { { path = LIBV1_DIR, name = "target1" } }
-      end
-      discover.discover = function()
-         return { path.join(FIXTURE_DIR, "benchmarks", "sort_bench.lua") }
-      end
-      subprocess.detect_runtime = function()
-         return "/usr/bin/lua"
-      end
-
-      local state = capture_exit_and_stderr()
-
-      local ok = pcall(function()
-         init.main({ "target1", "--isolate", "--param", "foo:bar" })
-      end)
-
-      assert.is_false(ok)
-      assert.are_equal(1, state.exit_code)
-      assert.matches("isolate", state.stderr)
-      assert.matches("cannot", state.stderr)
-      assert.matches("combined", state.stderr)
-      assert.matches("param", state.stderr)
-   end)
-
    it("main with --isolate and engine runtime exits with error about incompatibility", function()
       resolve.resolve_targets = function()
          return { { path = LIBV1_DIR, name = "target1" } }

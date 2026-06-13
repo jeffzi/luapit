@@ -156,9 +156,6 @@ function M.main(argv)
       end
       if args.isolate then
          opts.isolate = true
-         if opts.params then
-            bail("--isolate cannot be combined with --param")
-         end
       end
 
       local runtime_path, runtime_err, engine_name
