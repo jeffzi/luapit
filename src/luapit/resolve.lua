@@ -195,6 +195,21 @@ local function clone_repo(repo_url, dest_dir, ref, is_remote)
       "2>/dev/null",
    }, " ")
    if not exec_ok(checkout_cmd) then
+      -- CI environments (e.g. actions/checkout on a tag push) leave branches as
+      -- remote-tracking refs only (refs/remotes/origin/<ref>). A local clone
+      -- won't expose those, so fetch the tracking ref explicitly and retry.
+      if not is_remote then
+         local fetch_cmd = table.concat({
+            "git -C",
+            quote_arg(dest_dir),
+            "fetch origin",
+            quote_arg("refs/remotes/origin/" .. ref .. ":refs/remotes/origin/" .. ref),
+            "2>/dev/null",
+         }, " ")
+         if exec_ok(fetch_cmd) and exec_ok(checkout_cmd) then
+            return true
+         end
+      end
       return nil, string.format("failed to checkout ref %q in %q", ref, repo_url)
    end
 
