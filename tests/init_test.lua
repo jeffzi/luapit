@@ -106,6 +106,24 @@ describe("init", function()
       assert.are_same({ "target1", "target2" }, args.targets)
    end)
 
+   for _, flag in ipairs({ "-v", "--version" }) do
+      it("build_parser when " .. flag .. " is passed exits with code 0", function()
+         local state = capture_exit_and_stderr()
+
+         local parser = init.build_parser()
+         pcall(function()
+            parser:parse({ "target1", flag })
+         end)
+
+         assert.are_equal(0, state.exit_code)
+      end)
+   end
+
+   it("_VERSION is a semver string", function()
+      assert.is_string(init._VERSION)
+      assert.truthy(init._VERSION:match("^%d+%.%d+%.%d+$"))
+   end)
+
    -- main validation tests
 
    it("main with --isolate sets opts.isolate to true in runner.run call", function()

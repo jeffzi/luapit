@@ -9,7 +9,7 @@ describe("luapit", function()
    local FIXTURE_DIR = path.join(CWD, "tests", "fixtures")
    local LIBV1_DIR = path.join(FIXTURE_DIR, "targets", "libv1")
    local LIBV2_DIR = path.join(FIXTURE_DIR, "targets", "libv2")
-   local LUAPIT_VERSION = "0.6.0"
+   local LUAPIT_VERSION = require("luapit")._VERSION
 
    before_each(function()
       luapit = require("luapit")

@@ -8,7 +8,7 @@ local subprocess = require("luapit.subprocess")
 
 local M = {}
 
-M._VERSION = "0.6.0"
+M._VERSION = "0.7.0"
 
 --- Write an error message to stderr and exit with code 1.
 --- @param msg string|nil Error message (without prefix or newline).
@@ -85,6 +85,10 @@ function M.build_parser()
       :option("--lua-path", "Subdirectory within each target to add to package.path (repeatable).")
       :count("*")
    parser:flag("--isolate", "Run each target in its own subprocess for heap isolation.")
+   parser:flag("-v --version", "Show version and exit."):action(function()
+      print("luapit " .. M._VERSION)
+      os.exit(0)
+   end)
 
    return parser
 end
